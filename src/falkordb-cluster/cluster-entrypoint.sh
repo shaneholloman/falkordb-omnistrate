@@ -262,6 +262,37 @@ fix_namespace_in_config_files() {
   else
     echo "INSTANCE_ID not set, skipping namespace fix"
   fi
+  
+  # Fix DNS suffix mismatches when snapshot is restored in different cluster
+  if [[ -n "$DNS_SUFFIX" ]]; then
+    echo "Current DNS suffix: $DNS_SUFFIX"
+    
+    # Escape special sed characters (&, \, /) in DNS_SUFFIX for safe use in replacement string
+    local escaped_dns_suffix=$(echo "$DNS_SUFFIX" | sed 's/[&\\/]/\\&/g')
+    
+    # Check and fix node.conf
+    if [[ -f "$NODE_CONF_FILE" ]]; then
+      # First check if the file contains the current DNS suffix - if so, likely no replacement needed
+      # But we still run the replacement to handle mixed cases where some entries might be outdated
+      echo "Checking node.conf for DNS suffix mismatches"
+      # Replace old DNS suffixes with current one for specific configuration parameters
+      # This regex matches the Omnistrate DNS suffix structure: hc-<ID>.<REGION>.<CLOUD>.<HASH>.<TLD>
+      # Example: hc-abc123.us-central1.gcp.f2e0a955bb84.cloud
+      # Pattern: captures hostname (may contain underscores, must have at least one letter to avoid matching IPs), 
+      # then matches the DNS suffix structure and replaces it with the current DNS suffix
+      # The replacement is idempotent - if DNS suffix is already correct, it stays the same
+      sed -i -E "s/([a-zA-Z0-9_-]*[a-zA-Z][a-zA-Z0-9_-]*)\.hc-[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-f0-9]+\.[a-zA-Z]+/\1.${escaped_dns_suffix}/g" "$NODE_CONF_FILE"
+    fi
+    
+    # Check and fix nodes.conf (cluster mode)
+    if [[ -f "$DATA_DIR/nodes.conf" ]]; then
+      echo "Checking nodes.conf for DNS suffix mismatches"
+      # The replacement is idempotent - if DNS suffix is already correct, it stays the same
+      sed -i -E "s/([a-zA-Z0-9_-]*[a-zA-Z][a-zA-Z0-9_-]*)\.hc-[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-f0-9]+\.[a-zA-Z]+/\1.${escaped_dns_suffix}/g" "$DATA_DIR/nodes.conf"
+    fi
+  else
+    echo "DNS_SUFFIX not set, skipping DNS suffix fix"
+  fi
 }
 
 wait_for_bgrewrite_to_finish() {
