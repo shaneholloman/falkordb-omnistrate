@@ -83,7 +83,7 @@ x-clusterparam: &clusterparam
       type: Password
       modifiable: true
       required: true
-      export: false
+      export: true
     - key: RDBPersistenceConfig
       description: How often to save the RDB file to disk. Check the documentation for more information.
       name: RDB Persistence Config
@@ -503,7 +503,7 @@ services:
         type: Password
         modifiable: true
         required: true
-        export: false
+        export: true
         parameterDependencyMap:
           node-s: falkordbPassword
       - key: RDBPersistenceConfig
@@ -686,7 +686,7 @@ services:
         type: Password
         modifiable: true
         required: true
-        export: false
+        export: true
       - key: RDBPersistenceConfig
         description: How often to save the RDB file to disk. Check the documentation for more information.
         name: RDB Persistence Config
@@ -995,7 +995,7 @@ services:
         type: Password
         modifiable: true
         required: true
-        export: false
+        export: true
         parameterDependencyMap:
           node-sz: falkordbPassword
       - key: RDBPersistenceConfig
@@ -1190,7 +1190,7 @@ services:
         type: Password
         modifiable: true
         required: true
-        export: false
+        export: true
         parameterDependencyMap:
           sentinel-sz: falkordbPassword
       - key: RDBPersistenceConfig
@@ -1612,7 +1612,7 @@ services:
         type: Password
         modifiable: false
         required: true
-        export: false
+        export: true
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
@@ -1759,7 +1759,7 @@ services:
         type: Password
         modifiable: true
         required: true
-        export: false
+        export: true
         parameterDependencyMap:
           node-mz: falkordbPassword
       - key: RDBPersistenceConfig
@@ -1953,7 +1953,7 @@ services:
         type: Password
         modifiable: true
         required: true
-        export: false
+        export: true
         parameterDependencyMap:
           sentinel-mz: falkordbPassword
       - key: RDBPersistenceConfig
@@ -2374,7 +2374,7 @@ services:
         type: Password
         modifiable: false
         required: true
-        export: false
+        export: true
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
@@ -2506,7 +2506,7 @@ services:
         type: Password
         modifiable: true
         required: true
-        export: false
+        export: true
         parameterDependencyMap:
           cluster-sz: falkordbPassword
       - key: RDBPersistenceConfig
@@ -2877,7 +2877,7 @@ services:
         type: Password
         modifiable: true
         required: true
-        export: false
+        export: true
         parameterDependencyMap:
           cluster-mz: falkordbPassword
       - key: RDBPersistenceConfig
