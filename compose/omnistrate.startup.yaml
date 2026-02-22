@@ -522,7 +522,7 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
         oom_score_patch:
           imageNameWithTag: busybox:latest
