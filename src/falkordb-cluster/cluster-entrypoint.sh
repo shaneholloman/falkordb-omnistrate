@@ -387,7 +387,28 @@ create_user() {
 }
 
 get_default_memory_limit() {
-  echo "$(awk '/MemTotal/ {printf "%d\n", (($2 / 1024 - 2330) > 100 ? ($2 / 1024 - 2330) : 100)}' /proc/meminfo)MB"
+  # Try to get container memory limit from cgroup (v2 then v1)
+  local container_memory_bytes=0
+
+  if [ -f /sys/fs/cgroup/memory.max ]; then
+    # cgroup v2
+    local mem_max=$(cat /sys/fs/cgroup/memory.max)
+    if [ "$mem_max" != "max" ]; then
+      container_memory_bytes=$mem_max
+    fi
+  elif [ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+    # cgroup v1
+    container_memory_bytes=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+  fi
+
+  # If container memory limit is set and reasonable, use 75% of it
+  if [ "$container_memory_bytes" -gt 0 ] && [ "$container_memory_bytes" -lt 9223372036854771712 ]; then
+    # Calculate 75% of container memory in MB
+    echo "$(awk -v mem_bytes="$container_memory_bytes" 'BEGIN {printf "%d\n", ((mem_bytes / 1024 / 1024 * 0.75) > 100 ? (mem_bytes / 1024 / 1024 * 0.75) : 100)}')MB"
+  else
+    # Fall back to 75% of system memory from /proc/meminfo
+    echo "$(awk '/MemTotal/ {printf "%d\n", (($2 / 1024 * 0.75) > 100 ? ($2 / 1024 * 0.75) : 100)}' /proc/meminfo)MB"
+  fi
 }
 
 set_memory_limit() {
