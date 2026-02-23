@@ -269,20 +269,20 @@ get_memory_limit() {
   declare -A memory_limit_instance_type_map
   memory_limit_instance_type_map=(
     ["e2-standard-2"]="6GB"
-    ["e2-standard-4"]="14GB"
+    ["e2-standard-4"]="12GB"
     ["e2-custom-small-1024"]="100MB"
     ["e2-medium"]="2GB"
     ["e2-custom-4-8192"]="6GB"
-    ["e2-custom-8-16384"]="13GB"
-    ["e2-custom-16-32768"]="30GB"
-    ["e2-custom-32-65536"]="62GB"
+    ["e2-custom-8-16384"]="12GB"
+    ["e2-custom-16-32768"]="28GB"
+    ["e2-custom-32-65536"]="60GB"
     ["t2.medium"]="2GB"
     ["m6i.large"]="6GB"
-    ["m6i.xlarge"]="14GB"
+    ["m6i.xlarge"]="12GB"
     ["c6i.xlarge"]="6GB"
-    ["c6i.2xlarge"]="13GB"
-    ["c6i.4xlarge"]="30GB"
-    ["c6i.8xlarge"]="62GB"
+    ["c6i.2xlarge"]="12GB"
+    ["c6i.4xlarge"]="28GB"
+    ["c6i.8xlarge"]="60GB"
   )
 
   # if memory limit is 1200M or 2200M, set it to 1GB or 2GB respectively
