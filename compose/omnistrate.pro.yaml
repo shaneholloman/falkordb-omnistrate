@@ -347,10 +347,11 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
         parameterDependencyMap:
           node-s: nodeInstanceType
       - key: enableTLS
@@ -538,10 +539,11 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
       - key: enableTLS
         description: Whether to enable TLS for the database
         name: Enable TLS
@@ -828,10 +830,11 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
         parameterDependencyMap:
           node-sz: nodeInstanceType
 
@@ -1032,10 +1035,11 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
@@ -1589,10 +1593,11 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
         parameterDependencyMap:
           node-mz: nodeInstanceType
 
@@ -1793,10 +1798,11 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
