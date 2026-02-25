@@ -71,6 +71,12 @@ FALKORDB_MASTER_PORT_NUMBER=${MASTER_PORT:-6379}
 IS_REPLICA=${IS_REPLICA:-0}
 ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
 TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
+SELF_SIGNED_CA_FILE=${SELF_SIGNED_CA_FILE:-$TLS_MOUNT_PATH/selfsigned-ca.crt}
+TLS_CA_CERT_FILE=${TLS_CA_CERT_FILE:-$TLS_MOUNT_PATH/selfsigned-tls-combined.pem}
+SELF_SIGNED_CERT_FILE=${SELF_SIGNED_CERT_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.crt}
+SELF_SIGNED_KEY_FILE=${SELF_SIGNED_KEY_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.key}
+CLIENT_TLS_CERT_FILE=${CLIENT_TLS_CERT_FILE:-$TLS_MOUNT_PATH/tls.crt}
+CLIENT_TLS_KEY_FILE=${CLIENT_TLS_KEY_FILE:-$TLS_MOUNT_PATH/tls.key}
 DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
 
 # Add backward compatibility for /data folder
@@ -86,10 +92,26 @@ if [[ $(basename "$DATA_DIR") != 'data' ]];then DATA_DIR=$DATA_DIR/data;fi
 
 DEBUG=${DEBUG:-0}
 REPLACE_NODE_CONF=${REPLACE_NODE_CONF:-0}
-TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
 AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
 SAVE_LOGS_TO_FILE=${SAVE_LOGS_TO_FILE:-1}
 LOG_LEVEL=${LOG_LEVEL:-notice}
+
+if [[ "$TLS" == "true" ]]; then
+  BASE_CA_PATH=$ROOT_CA_PATH
+  if [[ -f "$TLS_CA_CERT_FILE" ]]; then
+    ROOT_CA_PATH=$TLS_CA_CERT_FILE
+  elif [[ -f "$SELF_SIGNED_CA_FILE" && -f "$BASE_CA_PATH" ]]; then
+    if cat "$BASE_CA_PATH" "$SELF_SIGNED_CA_FILE" >"$TLS_CA_CERT_FILE"; then
+      ROOT_CA_PATH=$TLS_CA_CERT_FILE
+    else
+      ROOT_CA_PATH=$BASE_CA_PATH
+    fi
+  elif [[ -f "$SELF_SIGNED_CA_FILE" ]]; then
+    ROOT_CA_PATH=$SELF_SIGNED_CA_FILE
+  fi
+fi
+
+TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
 
 DATE_NOW=$(date +"%Y%m%d%H%M%S")
 
@@ -108,7 +130,7 @@ echo "
     #!/bin/bash
     set -e
     AOF_FILE_SIZE_TO_MONITOR=\${AOF_FILE_SIZE_TO_MONITOR:-5}
-    ROOT_CA_PATH=\${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
+    ROOT_CA_PATH=\${ROOT_CA_PATH:-$TLS_CA_CERT_FILE}
     TLS_CONNECTION_STRING=$(if [[ \$TLS == "true" ]]; then echo "--tls --cacert \$ROOT_CA_PATH"; else echo ""; fi)
     size=0
     for file in $DATA_DIR/appendonlydir/appendonly.aof.*.incr.aof; do
@@ -568,11 +590,13 @@ if [ "$RUN_NODE" -eq "1" ]; then
     if ! grep -q "^tls-port $NODE_PORT" "$NODE_CONF_FILE"; then
       echo "port 0" >>$NODE_CONF_FILE
       echo "tls-port $NODE_PORT" >>$NODE_CONF_FILE
-      echo "tls-cert-file $TLS_MOUNT_PATH/tls.crt" >>$NODE_CONF_FILE
-      echo "tls-key-file $TLS_MOUNT_PATH/tls.key" >>$NODE_CONF_FILE
+      echo "tls-cert-file $SELF_SIGNED_CERT_FILE" >>$NODE_CONF_FILE
+      echo "tls-key-file $SELF_SIGNED_KEY_FILE" >>$NODE_CONF_FILE
+      echo "tls-client-cert-file $CLIENT_TLS_CERT_FILE" >>$NODE_CONF_FILE
+      echo "tls-client-key-file $CLIENT_TLS_KEY_FILE" >>$NODE_CONF_FILE
       echo "tls-ca-cert-file $ROOT_CA_PATH" >>$NODE_CONF_FILE
       echo "tls-replication yes" >>$NODE_CONF_FILE
-      echo "tls-auth-clients no" >>$NODE_CONF_FILE
+      echo "tls-auth-clients optional" >>$NODE_CONF_FILE
     fi
   else
     if ! grep -q "^port $NODE_PORT" "$NODE_CONF_FILE"; then
@@ -638,7 +662,11 @@ if [[ "$TLS" == "true" ]]; then
     #!/bin/bash
     set -e
     echo 'Refreshing node certificate'
-    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-cert-file $TLS_MOUNT_PATH/tls.crt
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-cert-file $SELF_SIGNED_CERT_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-key-file $SELF_SIGNED_KEY_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-client-cert-file $CLIENT_TLS_CERT_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-client-key-file $CLIENT_TLS_KEY_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-ca-cert-file $ROOT_CA_PATH
     " >$DATA_DIR/cert_rotate_node.sh
     chmod +x $DATA_DIR/cert_rotate_node.sh
   fi

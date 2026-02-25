@@ -37,6 +37,26 @@ SENTINEL_HOST=sentinel-$(echo $RESOURCE_ALIAS | cut -d "-" -f 2)-0.$LOCAL_DNS_SU
 SENTINEL_PORT=${SENTINEL_PORT:-26379}
 ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
 TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
+SELF_SIGNED_CA_FILE=${SELF_SIGNED_CA_FILE:-$TLS_MOUNT_PATH/selfsigned-ca.crt}
+TLS_CA_CERT_FILE=${TLS_CA_CERT_FILE:-$TLS_MOUNT_PATH/selfsigned-tls-combined.pem}
+SELF_SIGNED_CERT_FILE=${SELF_SIGNED_CERT_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.crt}
+SELF_SIGNED_KEY_FILE=${SELF_SIGNED_KEY_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.key}
+CLIENT_TLS_CERT_FILE=${CLIENT_TLS_CERT_FILE:-$TLS_MOUNT_PATH/tls.crt}
+CLIENT_TLS_KEY_FILE=${CLIENT_TLS_KEY_FILE:-$TLS_MOUNT_PATH/tls.key}
+if [[ "$TLS" == "true" ]]; then
+  BASE_CA_PATH=$ROOT_CA_PATH
+  if [[ -f "$TLS_CA_CERT_FILE" ]]; then
+    ROOT_CA_PATH=$TLS_CA_CERT_FILE
+  elif [[ -f "$SELF_SIGNED_CA_FILE" && -f "$BASE_CA_PATH" ]]; then
+    if cat "$BASE_CA_PATH" "$SELF_SIGNED_CA_FILE" >"$TLS_CA_CERT_FILE"; then
+      ROOT_CA_PATH=$TLS_CA_CERT_FILE
+    else
+      ROOT_CA_PATH=$BASE_CA_PATH
+    fi
+  elif [[ -f "$SELF_SIGNED_CA_FILE" ]]; then
+    ROOT_CA_PATH=$SELF_SIGNED_CA_FILE
+  fi
+fi
 TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
 AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
 
@@ -189,11 +209,13 @@ if [[ "$RUN_SENTINEL" -eq "1" ]] && ([[ "$NODE_INDEX" == "0" || "$NODE_INDEX" ==
     if ! grep -q "^tls-port $SENTINEL_PORT" "$SENTINEL_CONF_FILE"; then
       echo "port 0" >>$SENTINEL_CONF_FILE
       echo "tls-port $SENTINEL_PORT" >>$SENTINEL_CONF_FILE
-      echo "tls-cert-file $TLS_MOUNT_PATH/tls.crt" >>$SENTINEL_CONF_FILE
-      echo "tls-key-file $TLS_MOUNT_PATH/tls.key" >>$SENTINEL_CONF_FILE
+      echo "tls-cert-file $SELF_SIGNED_CERT_FILE" >>$SENTINEL_CONF_FILE
+      echo "tls-key-file $SELF_SIGNED_KEY_FILE" >>$SENTINEL_CONF_FILE
+      echo "tls-client-cert-file $CLIENT_TLS_CERT_FILE" >>$SENTINEL_CONF_FILE
+      echo "tls-client-key-file $CLIENT_TLS_KEY_FILE" >>$SENTINEL_CONF_FILE
       echo "tls-ca-cert-file $ROOT_CA_PATH" >>$SENTINEL_CONF_FILE
       echo "tls-replication yes" >>$SENTINEL_CONF_FILE
-      echo "tls-auth-clients no" >>$SENTINEL_CONF_FILE
+      echo "tls-auth-clients optional" >>$SENTINEL_CONF_FILE
     fi
   else
     echo "port $SENTINEL_PORT" >>$SENTINEL_CONF_FILE
