@@ -43,7 +43,6 @@ SELF_SIGNED_CERT_FILE=${SELF_SIGNED_CERT_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.cr
 SELF_SIGNED_KEY_FILE=${SELF_SIGNED_KEY_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.key}
 CLIENT_TLS_CERT_FILE=${CLIENT_TLS_CERT_FILE:-$TLS_MOUNT_PATH/tls.crt}
 CLIENT_TLS_KEY_FILE=${CLIENT_TLS_KEY_FILE:-$TLS_MOUNT_PATH/tls.key}
-TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
 AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
 
 MASTER_NAME=${MASTER_NAME:-master}
@@ -64,14 +63,14 @@ if [[ $(basename "$DATA_DIR") != 'data' ]]; then DATA_DIR=$DATA_DIR/data; fi
 TLS_CA_CERT_FILE=${TLS_CA_CERT_FILE:-$DATA_DIR/selfsigned-tls-combined.pem}
 if [[ "$TLS" == "true" ]]; then
   BASE_CA_PATH=$ROOT_CA_PATH
-  if [[ -f "$TLS_CA_CERT_FILE" ]]; then
-    ROOT_CA_PATH=$TLS_CA_CERT_FILE
-  elif [[ -f "$SELF_SIGNED_CA_FILE" && -f "$BASE_CA_PATH" ]]; then
+  if [[ -f "$SELF_SIGNED_CA_FILE" && -f "$BASE_CA_PATH" ]]; then
     if cat "$BASE_CA_PATH" "$SELF_SIGNED_CA_FILE" >"$TLS_CA_CERT_FILE"; then
       ROOT_CA_PATH=$TLS_CA_CERT_FILE
     else
       ROOT_CA_PATH=$BASE_CA_PATH
     fi
+  elif [[ -f "$TLS_CA_CERT_FILE" ]]; then
+    ROOT_CA_PATH=$TLS_CA_CERT_FILE
   elif [[ -f "$SELF_SIGNED_CA_FILE" ]]; then
     ROOT_CA_PATH=$SELF_SIGNED_CA_FILE
   fi
