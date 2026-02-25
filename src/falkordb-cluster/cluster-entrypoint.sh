@@ -65,8 +65,10 @@ SELF_SIGNED_CA_FILE=${SELF_SIGNED_CA_FILE:-$TLS_MOUNT_PATH/selfsigned-ca.crt}
 TLS_CA_CERT_FILE=${TLS_CA_CERT_FILE:-}
 SELF_SIGNED_CERT_FILE=${SELF_SIGNED_CERT_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.crt}
 SELF_SIGNED_KEY_FILE=${SELF_SIGNED_KEY_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.key}
-CLIENT_TLS_CERT_FILE=${CLIENT_TLS_CERT_FILE:-$TLS_MOUNT_PATH/tls.crt}
-CLIENT_TLS_KEY_FILE=${CLIENT_TLS_KEY_FILE:-$TLS_MOUNT_PATH/tls.key}
+SERVER_TLS_CERT_FILE=${SERVER_TLS_CERT_FILE:-$TLS_MOUNT_PATH/tls.crt}
+SERVER_TLS_KEY_FILE=${SERVER_TLS_KEY_FILE:-$TLS_MOUNT_PATH/tls.key}
+CLIENT_TLS_CERT_FILE=${CLIENT_TLS_CERT_FILE:-$SERVER_TLS_CERT_FILE}
+CLIENT_TLS_KEY_FILE=${CLIENT_TLS_KEY_FILE:-$SERVER_TLS_KEY_FILE}
 DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
 
 # Add backward compatibility for /data folder
@@ -563,8 +565,8 @@ run_node() {
     if ! grep -q "^tls-port $NODE_PORT" "$NODE_CONF_FILE"; then
       echo "port 0" >>$NODE_CONF_FILE
       echo "tls-port $NODE_PORT" >>$NODE_CONF_FILE
-      echo "tls-cert-file $CLIENT_TLS_CERT_FILE" >>$NODE_CONF_FILE
-      echo "tls-key-file $CLIENT_TLS_KEY_FILE" >>$NODE_CONF_FILE
+      echo "tls-cert-file $SERVER_TLS_CERT_FILE" >>$NODE_CONF_FILE
+      echo "tls-key-file $SERVER_TLS_KEY_FILE" >>$NODE_CONF_FILE
       echo "tls-client-cert-file $SELF_SIGNED_CERT_FILE" >>$NODE_CONF_FILE
       echo "tls-client-key-file $SELF_SIGNED_KEY_FILE" >>$NODE_CONF_FILE
       echo "tls-ca-cert-file $ROOT_CA_PATH" >>$NODE_CONF_FILE
@@ -645,8 +647,8 @@ if [[ "$TLS" == "true" ]]; then
       ROOT_CA_PATH=\"$TLS_CA_CERT_FILE\"
     fi
     TLS_CONNECTION_STRING=\"--tls --cacert \$ROOT_CA_PATH\"
-    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning \$TLS_CONNECTION_STRING CONFIG SET tls-cert-file $CLIENT_TLS_CERT_FILE
-    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning \$TLS_CONNECTION_STRING CONFIG SET tls-key-file $CLIENT_TLS_KEY_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning \$TLS_CONNECTION_STRING CONFIG SET tls-cert-file $SERVER_TLS_CERT_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning \$TLS_CONNECTION_STRING CONFIG SET tls-key-file $SERVER_TLS_KEY_FILE
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning \$TLS_CONNECTION_STRING CONFIG SET tls-client-cert-file $SELF_SIGNED_CERT_FILE
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning \$TLS_CONNECTION_STRING CONFIG SET tls-client-key-file $SELF_SIGNED_KEY_FILE
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning \$TLS_CONNECTION_STRING CONFIG SET tls-ca-cert-file \$ROOT_CA_PATH
