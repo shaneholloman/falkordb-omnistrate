@@ -358,6 +358,10 @@ services:
           - "r6i.xlarge"
           - "r6i.2xlarge"
           - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
         parameterDependencyMap:
           node-s: nodeInstanceType
       - key: enableTLS
@@ -556,6 +560,10 @@ services:
           - "r6i.xlarge"
           - "r6i.2xlarge"
           - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
       - key: enableTLS
         description: Whether to enable TLS for the database
         name: Enable TLS
@@ -853,6 +861,10 @@ services:
           - "r6i.xlarge"
           - "r6i.2xlarge"
           - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
         parameterDependencyMap:
           node-sz: nodeInstanceType
 
@@ -1064,6 +1076,10 @@ services:
           - "r6i.xlarge"
           - "r6i.2xlarge"
           - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
@@ -1628,6 +1644,10 @@ services:
           - "r6i.xlarge"
           - "r6i.2xlarge"
           - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
         parameterDependencyMap:
           node-mz: nodeInstanceType
 
@@ -1839,6 +1859,10 @@ services:
           - "r6i.xlarge"
           - "r6i.2xlarge"
           - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
