@@ -339,7 +339,11 @@ services:
         options:
           - "e2-medium"
           - "e2-standard-2"
+          - "e2-highmem-2"
           - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
           - "e2-custom-4-8192"
           - "e2-custom-8-16384"
           - "e2-custom-16-32768"
@@ -347,10 +351,13 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
         parameterDependencyMap:
           node-s: nodeInstanceType
       - key: enableTLS
@@ -530,7 +537,11 @@ services:
         options:
           - "e2-medium"
           - "e2-standard-2"
+          - "e2-highmem-2"
           - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
           - "e2-custom-4-8192"
           - "e2-custom-8-16384"
           - "e2-custom-16-32768"
@@ -538,10 +549,13 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
       - key: enableTLS
         description: Whether to enable TLS for the database
         name: Enable TLS
@@ -820,7 +834,11 @@ services:
         options:
           - "e2-medium"
           - "e2-standard-2"
+          - "e2-highmem-2"
           - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
           - "e2-custom-4-8192"
           - "e2-custom-8-16384"
           - "e2-custom-16-32768"
@@ -828,10 +846,13 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
         parameterDependencyMap:
           node-sz: nodeInstanceType
 
@@ -1024,7 +1045,11 @@ services:
         options:
           - "e2-medium"
           - "e2-standard-2"
+          - "e2-highmem-2"
           - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
           - "e2-custom-4-8192"
           - "e2-custom-8-16384"
           - "e2-custom-16-32768"
@@ -1032,10 +1057,13 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
@@ -1581,7 +1609,11 @@ services:
         options:
           - "e2-medium"
           - "e2-standard-2"
+          - "e2-highmem-2"
           - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
           - "e2-custom-4-8192"
           - "e2-custom-8-16384"
           - "e2-custom-16-32768"
@@ -1589,10 +1621,13 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
         parameterDependencyMap:
           node-mz: nodeInstanceType
 
@@ -1785,7 +1820,11 @@ services:
         options:
           - "e2-medium"
           - "e2-standard-2"
+          - "e2-highmem-2"
           - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
           - "e2-custom-4-8192"
           - "e2-custom-8-16384"
           - "e2-custom-16-32768"
@@ -1793,10 +1832,13 @@ services:
           - "t2.medium"
           - "m6i.large"
           - "m6i.xlarge"
-          - "c6i.xlarge"
-          - "c6i.2xlarge"
-          - "c6i.4xlarge"
-          - "c6i.8xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
