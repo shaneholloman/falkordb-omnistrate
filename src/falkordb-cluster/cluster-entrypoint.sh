@@ -62,7 +62,7 @@ BUS_PORT=${BUS_PORT:-16379}
 ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
 TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
 SELF_SIGNED_CA_FILE=${SELF_SIGNED_CA_FILE:-$TLS_MOUNT_PATH/selfsigned-ca.crt}
-TLS_CA_CERT_FILE=${TLS_CA_CERT_FILE:-$TLS_MOUNT_PATH/selfsigned-tls-combined.pem}
+TLS_CA_CERT_FILE=${TLS_CA_CERT_FILE:-}
 SELF_SIGNED_CERT_FILE=${SELF_SIGNED_CERT_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.crt}
 SELF_SIGNED_KEY_FILE=${SELF_SIGNED_KEY_FILE:-$TLS_MOUNT_PATH/selfsigned-tls.key}
 CLIENT_TLS_CERT_FILE=${CLIENT_TLS_CERT_FILE:-$TLS_MOUNT_PATH/tls.crt}
@@ -82,6 +82,7 @@ if [[ $(basename "$DATA_DIR") != 'data' ]];then DATA_DIR=$DATA_DIR/data;fi
 
 DEBUG=${DEBUG:-0}
 REPLACE_NODE_CONF=${REPLACE_NODE_CONF:-0}
+TLS_CA_CERT_FILE=${TLS_CA_CERT_FILE:-$DATA_DIR/selfsigned-tls-combined.pem}
 if [[ "$TLS" == "true" ]]; then
   BASE_CA_PATH=$ROOT_CA_PATH
   if [[ -f "$TLS_CA_CERT_FILE" ]]; then
@@ -633,6 +634,17 @@ if [[ "$TLS" == "true" ]]; then
     #!/bin/bash
     set -e
     echo 'Refreshing node certificate'
+    ROOT_CA_PATH=\"$ROOT_CA_PATH\"
+    BASE_CA_PATH=\"$BASE_CA_PATH\"
+    SELF_SIGNED_CA_FILE=\"$SELF_SIGNED_CA_FILE\"
+    TLS_CA_CERT_FILE=\"$TLS_CA_CERT_FILE\"
+    if [[ -f \"$SELF_SIGNED_CA_FILE\" && -f \"$BASE_CA_PATH\" ]]; then
+      cat \"$BASE_CA_PATH\" \"$SELF_SIGNED_CA_FILE\" >\"$TLS_CA_CERT_FILE\"
+      ROOT_CA_PATH=\"$TLS_CA_CERT_FILE\"
+    elif [[ -f \"$TLS_CA_CERT_FILE\" ]]; then
+      ROOT_CA_PATH=\"$TLS_CA_CERT_FILE\"
+    fi
+    TLS_CONNECTION_STRING=\"--tls --cacert $ROOT_CA_PATH\"
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-cert-file $SELF_SIGNED_CERT_FILE
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-key-file $SELF_SIGNED_KEY_FILE
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-client-cert-file $CLIENT_TLS_CERT_FILE
