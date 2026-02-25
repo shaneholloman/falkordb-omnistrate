@@ -582,8 +582,7 @@ run_node() {
       echo "tls-client-cert-file $SELF_SIGNED_CERT_FILE" >>$NODE_CONF_FILE
     fi
     if grep -q "^tls-client-key-file " "$NODE_CONF_FILE"; then
-      sed -i "s|^tls-client-key-file .*|tls-client-key-file $SELF_SIGNED_KEY_FILE|" "$NODE_CONF_FILE
-"
+      sed -i "s|^tls-client-key-file .*|tls-client-key-file $SELF_SIGNED_KEY_FILE|" "$NODE_CONF_FILE"
     else
       echo "tls-client-key-file $SELF_SIGNED_KEY_FILE" >>$NODE_CONF_FILE
     fi
