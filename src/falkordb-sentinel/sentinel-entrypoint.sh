@@ -211,10 +211,10 @@ if [[ "$RUN_SENTINEL" -eq "1" ]] && ([[ "$NODE_INDEX" == "0" || "$NODE_INDEX" ==
     if ! grep -q "^tls-port $SENTINEL_PORT" "$SENTINEL_CONF_FILE"; then
       echo "port 0" >>$SENTINEL_CONF_FILE
       echo "tls-port $SENTINEL_PORT" >>$SENTINEL_CONF_FILE
-      echo "tls-cert-file $SELF_SIGNED_CERT_FILE" >>$SENTINEL_CONF_FILE
-      echo "tls-key-file $SELF_SIGNED_KEY_FILE" >>$SENTINEL_CONF_FILE
-      echo "tls-client-cert-file $CLIENT_TLS_CERT_FILE" >>$SENTINEL_CONF_FILE
-      echo "tls-client-key-file $CLIENT_TLS_KEY_FILE" >>$SENTINEL_CONF_FILE
+      echo "tls-cert-file $CLIENT_TLS_CERT_FILE" >>$SENTINEL_CONF_FILE
+      echo "tls-key-file $CLIENT_TLS_KEY_FILE" >>$SENTINEL_CONF_FILE
+      echo "tls-client-cert-file $SELF_SIGNED_CERT_FILE" >>$SENTINEL_CONF_FILE
+      echo "tls-client-key-file $SELF_SIGNED_KEY_FILE" >>$SENTINEL_CONF_FILE
       echo "tls-ca-cert-file $ROOT_CA_PATH" >>$SENTINEL_CONF_FILE
       echo "tls-replication yes" >>$SENTINEL_CONF_FILE
       echo "tls-auth-clients optional" >>$SENTINEL_CONF_FILE

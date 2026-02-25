@@ -591,10 +591,10 @@ if [ "$RUN_NODE" -eq "1" ]; then
     if ! grep -q "^tls-port $NODE_PORT" "$NODE_CONF_FILE"; then
       echo "port 0" >>$NODE_CONF_FILE
       echo "tls-port $NODE_PORT" >>$NODE_CONF_FILE
-      echo "tls-cert-file $SELF_SIGNED_CERT_FILE" >>$NODE_CONF_FILE
-      echo "tls-key-file $SELF_SIGNED_KEY_FILE" >>$NODE_CONF_FILE
-      echo "tls-client-cert-file $CLIENT_TLS_CERT_FILE" >>$NODE_CONF_FILE
-      echo "tls-client-key-file $CLIENT_TLS_KEY_FILE" >>$NODE_CONF_FILE
+      echo "tls-cert-file $CLIENT_TLS_CERT_FILE" >>$NODE_CONF_FILE
+      echo "tls-key-file $CLIENT_TLS_KEY_FILE" >>$NODE_CONF_FILE
+      echo "tls-client-cert-file $SELF_SIGNED_CERT_FILE" >>$NODE_CONF_FILE
+      echo "tls-client-key-file $SELF_SIGNED_KEY_FILE" >>$NODE_CONF_FILE
       echo "tls-ca-cert-file $ROOT_CA_PATH" >>$NODE_CONF_FILE
       echo "tls-replication yes" >>$NODE_CONF_FILE
       echo "tls-auth-clients optional" >>$NODE_CONF_FILE
@@ -674,10 +674,10 @@ if [[ "$TLS" == "true" ]]; then
       ROOT_CA_PATH=\"$TLS_CA_CERT_FILE\"
     fi
     TLS_CONNECTION_STRING=\"--tls --cacert $ROOT_CA_PATH\"
-    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-cert-file $SELF_SIGNED_CERT_FILE
-    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-key-file $SELF_SIGNED_KEY_FILE
-    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-client-cert-file $CLIENT_TLS_CERT_FILE
-    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-client-key-file $CLIENT_TLS_KEY_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-cert-file $CLIENT_TLS_CERT_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-key-file $CLIENT_TLS_KEY_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-client-cert-file $SELF_SIGNED_CERT_FILE
+    redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-client-key-file $SELF_SIGNED_KEY_FILE
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-ca-cert-file $ROOT_CA_PATH
     " >$DATA_DIR/cert_rotate_node.sh
     chmod +x $DATA_DIR/cert_rotate_node.sh
