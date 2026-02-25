@@ -212,12 +212,40 @@ if [[ "$RUN_SENTINEL" -eq "1" ]] && ([[ "$NODE_INDEX" == "0" || "$NODE_INDEX" ==
     if ! grep -q "^tls-port $SENTINEL_PORT" "$SENTINEL_CONF_FILE"; then
       echo "port 0" >>$SENTINEL_CONF_FILE
       echo "tls-port $SENTINEL_PORT" >>$SENTINEL_CONF_FILE
+    fi
+    if grep -q "^tls-cert-file " "$SENTINEL_CONF_FILE"; then
+      sed -i "s|^tls-cert-file .*|tls-cert-file $SERVER_TLS_CERT_FILE|" "$SENTINEL_CONF_FILE"
+    else
       echo "tls-cert-file $SERVER_TLS_CERT_FILE" >>$SENTINEL_CONF_FILE
+    fi
+    if grep -q "^tls-key-file " "$SENTINEL_CONF_FILE"; then
+      sed -i "s|^tls-key-file .*|tls-key-file $SERVER_TLS_KEY_FILE|" "$SENTINEL_CONF_FILE"
+    else
       echo "tls-key-file $SERVER_TLS_KEY_FILE" >>$SENTINEL_CONF_FILE
+    fi
+    if grep -q "^tls-client-cert-file " "$SENTINEL_CONF_FILE"; then
+      sed -i "s|^tls-client-cert-file .*|tls-client-cert-file $SELF_SIGNED_CERT_FILE|" "$SENTINEL_CONF_FILE"
+    else
       echo "tls-client-cert-file $SELF_SIGNED_CERT_FILE" >>$SENTINEL_CONF_FILE
+    fi
+    if grep -q "^tls-client-key-file " "$SENTINEL_CONF_FILE"; then
+      sed -i "s|^tls-client-key-file .*|tls-client-key-file $SELF_SIGNED_KEY_FILE|" "$SENTINEL_CONF_FILE"
+    else
       echo "tls-client-key-file $SELF_SIGNED_KEY_FILE" >>$SENTINEL_CONF_FILE
+    fi
+    if grep -q "^tls-ca-cert-file " "$SENTINEL_CONF_FILE"; then
+      sed -i "s|^tls-ca-cert-file .*|tls-ca-cert-file $ROOT_CA_PATH|" "$SENTINEL_CONF_FILE"
+    else
       echo "tls-ca-cert-file $ROOT_CA_PATH" >>$SENTINEL_CONF_FILE
+    fi
+    if grep -q "^tls-replication " "$SENTINEL_CONF_FILE"; then
+      sed -i "s|^tls-replication .*|tls-replication yes|" "$SENTINEL_CONF_FILE"
+    else
       echo "tls-replication yes" >>$SENTINEL_CONF_FILE
+    fi
+    if grep -q "^tls-auth-clients " "$SENTINEL_CONF_FILE"; then
+      sed -i "s|^tls-auth-clients .*|tls-auth-clients optional|" "$SENTINEL_CONF_FILE"
+    else
       echo "tls-auth-clients optional" >>$SENTINEL_CONF_FILE
     fi
   else

@@ -593,12 +593,40 @@ if [ "$RUN_NODE" -eq "1" ]; then
     if ! grep -q "^tls-port $NODE_PORT" "$NODE_CONF_FILE"; then
       echo "port 0" >>$NODE_CONF_FILE
       echo "tls-port $NODE_PORT" >>$NODE_CONF_FILE
+    fi
+    if grep -q "^tls-cert-file " "$NODE_CONF_FILE"; then
+      sed -i "s|^tls-cert-file .*|tls-cert-file $SERVER_TLS_CERT_FILE|" "$NODE_CONF_FILE"
+    else
       echo "tls-cert-file $SERVER_TLS_CERT_FILE" >>$NODE_CONF_FILE
+    fi
+    if grep -q "^tls-key-file " "$NODE_CONF_FILE"; then
+      sed -i "s|^tls-key-file .*|tls-key-file $SERVER_TLS_KEY_FILE|" "$NODE_CONF_FILE"
+    else
       echo "tls-key-file $SERVER_TLS_KEY_FILE" >>$NODE_CONF_FILE
+    fi
+    if grep -q "^tls-client-cert-file " "$NODE_CONF_FILE"; then
+      sed -i "s|^tls-client-cert-file .*|tls-client-cert-file $SELF_SIGNED_CERT_FILE|" "$NODE_CONF_FILE"
+    else
       echo "tls-client-cert-file $SELF_SIGNED_CERT_FILE" >>$NODE_CONF_FILE
+    fi
+    if grep -q "^tls-client-key-file " "$NODE_CONF_FILE"; then
+      sed -i "s|^tls-client-key-file .*|tls-client-key-file $SELF_SIGNED_KEY_FILE|" "$NODE_CONF_FILE"
+    else
       echo "tls-client-key-file $SELF_SIGNED_KEY_FILE" >>$NODE_CONF_FILE
+    fi
+    if grep -q "^tls-ca-cert-file " "$NODE_CONF_FILE"; then
+      sed -i "s|^tls-ca-cert-file .*|tls-ca-cert-file $ROOT_CA_PATH|" "$NODE_CONF_FILE"
+    else
       echo "tls-ca-cert-file $ROOT_CA_PATH" >>$NODE_CONF_FILE
+    fi
+    if grep -q "^tls-replication " "$NODE_CONF_FILE"; then
+      sed -i "s|^tls-replication .*|tls-replication yes|" "$NODE_CONF_FILE"
+    else
       echo "tls-replication yes" >>$NODE_CONF_FILE
+    fi
+    if grep -q "^tls-auth-clients " "$NODE_CONF_FILE"; then
+      sed -i "s|^tls-auth-clients .*|tls-auth-clients optional|" "$NODE_CONF_FILE"
+    else
       echo "tls-auth-clients optional" >>$NODE_CONF_FILE
     fi
   else
