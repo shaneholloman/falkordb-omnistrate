@@ -2,14 +2,16 @@ ARG FALKORDB_VERSION=v4.16.7
 
 FROM falkordb/falkordb-server:$FALKORDB_VERSION
 
-RUN apk update && \
-    apk add --no-cache bash curl jq openssl supervisor gdb ca-certificates openssl libc6-compat libgcc libstdc++
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends bash curl jq openssl supervisor gdb ca-certificates libc6 libgcc-s1 libstdc++6 && \
+    rm -rf /var/lib/apt/lists/*
 
 ADD https://secure.globalsign.com/cacert/root-r1.crt /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt
 
-RUN openssl x509 -in /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt -out /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.pem && \
-  rm /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt && \
-  chmod 644 /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.pem && \
+RUN openssl x509 -in /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt \
+    -out /tmp/GlobalSign_Root_CA_R1.crt && \
+  mv /tmp/GlobalSign_Root_CA_R1.crt /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt && \
+  chmod 644 /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt && \
   update-ca-certificates
 
 RUN mkdir -p /var/lib/falkordb
@@ -36,7 +38,7 @@ RUN mkdir -p /var/lib/falkordb/bin && \
   echo "Using ARCH: $ARCH, SHA: $EXPECTED_SHA" && \
   URL="https://github.com/FalkorDB/valkey-ldap/releases/download/v0.1.1/libvalkey_ldap-alpine-${ARCH}.so" && \
   echo "Downloading from: $URL" && \
-  curl -L -o /var/lib/falkordb/bin/valkey_ldap.so "$URL" && \
+  curl -L --retry 3 --retry-delay 5 -o /var/lib/falkordb/bin/valkey_ldap.so "$URL" && \
   ls -lh /var/lib/falkordb/bin/valkey_ldap.so && \
   sha256sum /var/lib/falkordb/bin/valkey_ldap.so && \
   echo "${EXPECTED_SHA}  /var/lib/falkordb/bin/valkey_ldap.so" | sha256sum -c - && \
