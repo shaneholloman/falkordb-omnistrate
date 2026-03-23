@@ -34,7 +34,7 @@ jobs:
       contents: read
       security-events: write
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         platform: [amd64, arm64]
         image:
