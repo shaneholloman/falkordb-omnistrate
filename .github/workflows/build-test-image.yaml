@@ -139,6 +139,22 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
 
+      - name: Scan image with Grype
+        uses: anchore/scan-action@v6
+        id: grype
+        with:
+          image: falkordb/${{ matrix.image-name }}:dev-${{ github.event.head_commit.id || github.run_id }}
+          fail-build: true
+          severity-cutoff: critical
+          output-format: sarif
+
+      - name: Upload Grype SARIF report
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype-${{ matrix.image-name }}
+
   omnistrate-update-plans:
     needs: build-and-push
     runs-on: ubuntu-latest

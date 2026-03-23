@@ -86,6 +86,21 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.image.image_name }}-${{ matrix.platform }}
           tags: falkordb/${{ matrix.image.image_name }}:${{ steps.set_tag.outputs.tag }}, falkordb/${{ matrix.image.image_name }}:latest-${{ matrix.platform }}
 
+      - name: Scan image with Grype
+        uses: anchore/scan-action@v6
+        id: grype
+        with:
+          image: falkordb/${{ matrix.image-name }}:dev-${{ github.event.head_commit.id || github.run_id }}
+          fail-build: true
+          severity-cutoff: critical
+          output-format: sarif
+
+      - name: Upload Grype SARIF report
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype-${{ matrix.image-name }}
 
   create-image-manifest:
     needs: build-and-push
