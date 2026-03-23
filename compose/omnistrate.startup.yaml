@@ -26,7 +26,12 @@ x-pre-upgrade-hook: &preupgradehook
     set -euo pipefail
     echo "Running BGREWRITEAOF before upgrade"
 
-    adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | base64 -d)
+    if [[ -f /run/secrets/adminpassword ]]; then
+      adminpass=$(cat /run/secrets/adminpassword)
+    else
+      adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | tr -d '"' | base64 -d)
+    fi
+    
     if [[ -z "$adminpass" ]]; then
         echo "ERROR: Failed to retrieve admin password from secret. Cannot proceed with Redis operations." >&2
         exit 1
@@ -198,7 +203,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           node-s: falkorDBCacheSize
@@ -224,7 +229,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           node-s: falkorDBMaxQueuedQueries
@@ -274,10 +279,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           node-s: falkorDBQueryMemCapacity
       - key: memoryRequestsAndLimits
@@ -297,6 +302,7 @@ services:
       backupConfiguration:
         backupRetentionInDays: 7
         backupPeriodInHours: 12
+        snapshotBeforeDeletion: false
     depends_on:
       - node-s
 
@@ -366,7 +372,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
       - key: falkorDBNodeCreationBuffer
         description: Choose the buffer size for your database
@@ -388,7 +394,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
       - key: falkorDBTimeoutMax
         description: Choose the timeout max for your database
@@ -430,10 +436,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
       - key: memoryRequestsAndLimits
         description: Choose the memory amount for your database
         name: Memory
@@ -516,7 +522,7 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
         oom_score_patch:
           imageNameWithTag: busybox:latest

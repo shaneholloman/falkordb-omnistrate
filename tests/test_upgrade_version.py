@@ -40,7 +40,7 @@ parser.add_argument(
 )
 parser.add_argument("--instance-type", required=True)
 parser.add_argument("--storage-size", required=False, default="30")
-parser.add_argument("--tls", action="store_true")
+parser.add_argument("--tls", action="store_true", default=False)
 parser.add_argument("--rdb-config", required=False, default="medium")
 parser.add_argument("--aof-config", required=False, default="always")
 parser.add_argument("--host-count", required=False, default="6")
@@ -59,7 +59,6 @@ parser.add_argument(
     "--deployment-failover-timeout-seconds", required=False, default=2600, type=int
 )
 
-parser.set_defaults(tls=False)
 args = parser.parse_args()
 
 instance: OmnistrateFleetInstance = None
@@ -89,6 +88,13 @@ def get_last_gh_tag():
 
 def test_upgrade_version():
     global instance
+
+    old_version = os.getenv("OLD_VERSION", "").strip()
+    new_version = os.getenv("NEW_VERSION", "").strip()
+    if not old_version:
+        raise ValueError("OLD_VERSION environment variable is not set or empty")
+    if not new_version:
+        raise ValueError("NEW_VERSION environment variable is not set or empty")
 
     omnistrate = OmnistrateFleetAPI(
         email=args.omnistrate_user,
@@ -183,7 +189,7 @@ def test_upgrade_version():
             AOFPersistenceConfig=args.aof_config,
             hostCount=args.host_count,
             clusterReplicas=args.cluster_replicas,
-            product_tier_version=last_tier.version,
+            product_tier_version=old_version,
             custom_network_id=network.network_id if network else None,
         )
 
@@ -202,7 +208,7 @@ def test_upgrade_version():
         thread_signal = None
         error_signal = None
         thread = None
-        if "standalone" not in args.instance_name:
+        if args.resource_key not in ("standalone", "free"):
             thread_signal = threading.Event()
             error_signal = threading.Event()
             thread = threading.Thread(
@@ -216,12 +222,12 @@ def test_upgrade_version():
         instance.upgrade(
             service_id=args.service_id,
             product_tier_id=product_tier.product_tier_id,
-            source_version=last_tier.version,
-            target_version=preferred_tier.version,
+            source_version=old_version,
+            target_version=new_version,
             wait_until_ready=True,
         )
 
-        if "standalone" not in args.instance_name:
+        if args.resource_key not in ("standalone", "free"):
             thread_signal.set()
             thread.join()
 
@@ -238,7 +244,7 @@ def test_upgrade_version():
     # 7. Delete the instance
     instance.delete(False)
 
-    if "standalone" not in args.instance_name and error_signal.is_set():
+    if args.resource_key not in ("standalone", "free") and error_signal.is_set():
         raise ValueError("Test failed")
     else:
         logging.info("Test passed")
@@ -247,7 +253,7 @@ def test_upgrade_version():
 def add_data(instance: OmnistrateFleetInstance):
 
     # Get instance host and port
-    db = instance.create_connection(ssl=args.tls)
+    db = instance.create_connection(ssl=args.tls, force_reconnect=True)
 
     graph = db.select_graph("test")
 
@@ -258,12 +264,12 @@ def add_data(instance: OmnistrateFleetInstance):
 def query_data(instance: OmnistrateFleetInstance):
 
     # Get instance host and port
-    db = instance.create_connection(ssl=args.tls)
+    db = instance.create_connection(ssl=args.tls, force_reconnect=True)
 
     graph = db.select_graph("test")
 
     # Get info
-    result = graph.query("MATCH (n:Person) RETURN n.name")
+    result = graph.ro_query("MATCH (n:Person) RETURN n.name")
 
     if len(result.result_set) == 0:
         raise ValueError("No data found in the graph after upgrade")
@@ -276,15 +282,43 @@ def test_zero_downtime(
     ssl=False,
 ):
     """This function should test the ability to read and write while an upgrade version happens"""
+    from redis.exceptions import ReadOnlyError
+    from redis.sentinel import MasterNotFoundError
+    import sys
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from tests.suite_utils import is_stale_master_error
+    
     try:
         db = instance.create_connection(ssl=ssl, force_reconnect=True)
-
         graph = db.select_graph("test")
 
         while not thread_signal.is_set():
-            # Write some data to the DB
-            graph.query("CREATE (n:Person {name: 'Alice'})")
-            graph.ro_query("MATCH (n:Person {name: 'Alice'}) RETURN n")
+            retries_left = 3
+            
+            while retries_left > 0:
+                try:
+                    # Write some data to the DB
+                    graph.query("CREATE (n:Person {name: 'Alice'})")
+                    graph.ro_query("MATCH (n:Person {name: 'Alice'}) RETURN n")
+                    break  # Success, exit retry loop
+                except (ReadOnlyError, MasterNotFoundError, Exception) as e:
+                    retries_left -= 1
+                    
+                    if is_stale_master_error(e) and retries_left > 0:
+                        # Retry on stale master error if we have retries left
+                        logging.warning(
+                            f"Connection to stale master detected in test_zero_downtime "
+                            f"({3 - retries_left}/3 attempts): {e}"
+                        )
+                        # Force connection reset and retry
+                        instance._connection = None
+                        time.sleep(35)  # Wait for sentinel to update (30s down-after + 5s buffer)
+                        db = instance.create_connection(ssl=ssl, force_reconnect=True)
+                        graph = db.select_graph("test")
+                    else:
+                        # Either not a stale master error, or no retries left
+                        raise
+            
             time.sleep(3)
     except Exception as e:
         logging.exception(e)

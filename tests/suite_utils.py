@@ -16,24 +16,62 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
+def is_stale_master_error(exception):
+    """
+    Check if an exception is due to a stale master connection during failover.
+    
+    This typically occurs when:
+    1. A failover happens and the master becomes a slave
+    2. Sentinels haven't fully propagated the topology change yet
+    3. The client is still connected to the old (now demoted) master
+    4. Sentinels are still electing a new master (MasterNotFoundError)
+    
+    Args:
+        exception: The exception to check
+        
+    Returns:
+        bool: True if this is a stale master error that should trigger a retry
+    """
+    error_str = str(exception).lower()
+    exception_name = type(exception).__name__
+    return (
+        isinstance(exception, ReadOnlyError)
+        or "read only replica" in error_str
+        or "master is now a slave" in error_str
+        or "previous master" in error_str
+        or "masternotfounderror" in exception_name.lower()
+        or "no master found" in error_str
+    )
+
+
 def add_data(
     instance: OmnistrateFleetInstance, ssl=False, key="test", n=1, network_type="PUBLIC", retry_on_ldap_fail_seconds=10
 ):
     logging.info(f"Adding {n} data entries to graph '{key}'")
-    try:
-        db = instance.create_connection(ssl=ssl, network_type=network_type)
-    except Exception as e:
-        if "LDAP authentication failed" in str(e):
-            if retry_on_ldap_fail_seconds > 0:
-                time.sleep(retry_on_ldap_fail_seconds)
-                logging.warning("LDAP authentication failed, retrying after delay")
-                return add_data(instance, ssl, key, n, network_type, retry_on_ldap_fail_seconds=retry_on_ldap_fail_seconds-5)
-        logging.error("Failed to create database connection: " + str(e))
-        raise
-    g = db.select_graph(key)
-    for _ in range(n):
-        g.query("CREATE (n:Person {name: 'Alice'})")
-    logging.debug(f"Successfully added {n} entries to graph '{key}'")
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            db = instance.create_connection(ssl=ssl, force_reconnect=True, network_type=network_type)
+            g = db.select_graph(key)
+            for _ in range(n):
+                g.query("CREATE (n:Person {name: 'Alice'})")
+            logging.debug(f"Successfully added {n} entries to graph '{key}'")
+            return
+        except (ReadOnlyError, Exception) as e:
+            if "LDAP authentication failed" in str(e):
+                if retry_on_ldap_fail_seconds > 0:
+                    time.sleep(retry_on_ldap_fail_seconds)
+                    logging.warning("LDAP authentication failed, retrying after delay")
+                    return add_data(instance, ssl, key, n, network_type, retry_on_ldap_fail_seconds=retry_on_ldap_fail_seconds-5)
+            if is_stale_master_error(e):
+                logging.warning(
+                    f"Connection to stale master detected in add_data (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                if attempt < max_retries - 1:
+                    instance._connection = None
+                    time.sleep(35)  # Wait for sentinel to update (30s down-after + 5s buffer)
+                    continue
+            raise
 
 
 def has_data(
@@ -44,16 +82,33 @@ def has_data(
     network_type="PUBLIC",
 ):
     logging.info(f"Checking if graph '{key}' has at least {min_rows} rows")
-    db = instance.create_connection(
-        ssl=ssl, force_reconnect=True, network_type=network_type
-    )
-    g = db.select_graph(key)
-    rs = g.query("MATCH (n:Person) RETURN n")
-    result = len(rs.result_set) >= min_rows
-    logging.debug(
-        f"Graph '{key}' has {len(rs.result_set)} rows. Meets requirement: {result}"
-    )
-    return result
+    
+    # Retry logic to handle master topology changes after disruptive operations
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            db = instance.create_connection(
+                ssl=ssl, force_reconnect=True, network_type=network_type
+            )
+            g = db.select_graph(key)
+            # Use read_only=True for read queries to avoid issues with stale master connections
+            rs = g.ro_query("MATCH (n:Person) RETURN n")
+            result = len(rs.result_set) >= min_rows
+            logging.debug(
+                f"Graph '{key}' has {len(rs.result_set)} rows. Meets requirement: {result}"
+            )
+            return result
+        except (ReadOnlyError, Exception) as e:
+            if is_stale_master_error(e):
+                logging.warning(
+                    f"Connection to stale master detected (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                if attempt < max_retries - 1:
+                    # Force connection reset
+                    instance._connection = None
+                    time.sleep(35)  # Wait for sentinel to update (30s down-after + 5s buffer)
+                    continue
+            raise
 
 
 def assert_data(
@@ -84,14 +139,41 @@ def zero_downtime_worker(
     network_type="PUBLIC",
 ):
     logging.info("Starting zero-downtime worker")
+    
     try:
         db = instance.create_connection(
             ssl=ssl, force_reconnect=True, network_type=network_type
         )
         g = db.select_graph(key)
+        
         while not stop_evt.is_set():
-            g.query("CREATE (n:Person {name: 'Alice'})")
-            g.ro_query("MATCH (n:Person {name: 'Alice'}) RETURN n")
+            retries_left = 3
+            
+            while retries_left > 0:
+                try:
+                    g.query("CREATE (n:Person {name: 'Alice'})")
+                    g.ro_query("MATCH (n:Person {name: 'Alice'}) RETURN n")
+                    break  # Success, exit retry loop
+                except (ReadOnlyError, Exception) as e:
+                    retries_left -= 1
+                    
+                    if is_stale_master_error(e) and retries_left > 0:
+                        # Retry on stale master error if we have retries left
+                        logging.warning(
+                            f"Connection to stale master detected in zero-downtime worker "
+                            f"({3 - retries_left}/3 attempts): {e}"
+                        )
+                        # Force connection reset and retry
+                        instance._connection = None
+                        time.sleep(35)  # Wait for sentinel to update (30s down-after + 5s buffer)
+                        db = instance.create_connection(
+                            ssl=ssl, force_reconnect=True, network_type=network_type
+                        )
+                        g = db.select_graph(key)
+                    else:
+                        # Either not a stale master error, or no retries left
+                        raise
+            
             time.sleep(2)
     except Exception as e:
         logging.exception("Error in zero-downtime worker")
@@ -151,7 +233,7 @@ def stress_oom(
     Keep writing until we hit OOM.
     """
     logging.info("Starting stress test to trigger OOM with query size '%s'", query_size)
-    db = instance.create_connection(ssl=ssl, network_type=network_type)
+    db = instance.create_connection(ssl=ssl, force_reconnect=True, network_type=network_type)
     g = db.select_graph("test")
     big = "UNWIND RANGE(1, 100000) AS id CREATE (n:Person {name: 'Alice'})"
     medium = "UNWIND RANGE(1, 25000) AS id CREATE (n:Person {name: 'Alice'})"

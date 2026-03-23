@@ -1,4 +1,4 @@
-ARG FALKORDB_VERSION=v4.16.0-alpine
+ARG FALKORDB_VERSION=v4.16.7
 
 FROM falkordb/falkordb-server:$FALKORDB_VERSION
 

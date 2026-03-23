@@ -62,7 +62,11 @@ x-pre-upgrade-hook: &preupgradehook
     set -euo pipefail
     echo "Running BGREWRITEAOF before upgrade"
 
-    adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | base64 -d)
+    if [[ -f /run/secrets/adminpassword ]]; then
+      adminpass=$(cat /run/secrets/adminpassword)
+    else
+      adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | tr -d '"' | base64 -d)
+    fi
     if [[ -z "$adminpass" ]]; then
         echo "ERROR: Failed to retrieve admin password from secret. Cannot proceed with Redis operations." >&2
         exit 1
@@ -151,7 +155,12 @@ x-post-upgrade-hook: &postupgradehook
     set -euo pipefail
     # Constants
     readonly LINK="Please refer to the documentation for instructions on how to resolve this issue: https://github.com/FalkorDB/runbooks/blob/main/alerts/SentinelSplitBrainAlertsRunbook.md"
-    adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | base64 -d)
+    if [[ -f /run/secrets/adminpassword ]]; then
+      adminpass=$(cat /run/secrets/adminpassword)
+    else
+      adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | tr -d '"' | base64 -d)
+    fi
+    
     if [[ -z "$adminpass" ]]; then
         echo "ERROR: Failed to retrieve admin password from secret. Cannot proceed with Redis operations." >&2
         exit 1
@@ -322,26 +331,37 @@ services:
         export: true
       - key: nodeInstanceType
         description: The size of the node instance. Check the documentation for more information.
-        name: Node Instance Type
+        name: Choose the instance type for your database
         type: String
         modifiable: true
         required: true
         export: true
         options:
-          - e2-medium
-          - e2-standard-2
-          - e2-standard-4
-          - e2-custom-4-8192
-          - e2-custom-8-16384
-          - e2-custom-16-32768
-          - e2-custom-32-65536
-          - t2.medium
-          - m6i.large
-          - m6i.xlarge
-          - c6i.xlarge
-          - c6i.2xlarge
-          - c6i.4xlarge
-          - c6i.8xlarge
+          - "e2-medium"
+          - "e2-standard-2"
+          - "e2-highmem-2"
+          - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
+          - "e2-custom-4-8192"
+          - "e2-custom-8-16384"
+          - "e2-custom-16-32768"
+          - "e2-custom-32-65536"
+          - "t2.medium"
+          - "m6i.large"
+          - "m6i.xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
         parameterDependencyMap:
           node-s: nodeInstanceType
       - key: enableTLS
@@ -410,7 +430,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           node-s: falkorDBCacheSize
@@ -436,7 +456,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           node-s: falkorDBMaxQueuedQueries
@@ -486,16 +506,17 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           node-s: falkorDBQueryMemCapacity
     x-omnistrate-capabilities:
       backupConfiguration:
         backupRetentionInDays: 7
         backupPeriodInHours: 12
+        snapshotBeforeDeletion: false
     depends_on:
       - node-s
 
@@ -512,26 +533,37 @@ services:
     x-omnistrate-api-params:
       - key: nodeInstanceType
         description: The size of the node instance. Check the documentation for more information.
-        name: Node Instance Type
+        name: Choose the instance type for your database
         type: String
         modifiable: true
         required: true
         export: true
         options:
-          - e2-medium
-          - e2-standard-2
-          - e2-standard-4
-          - e2-custom-4-8192
-          - e2-custom-8-16384
-          - e2-custom-16-32768
-          - e2-custom-32-65536
-          - t2.medium
-          - m6i.large
-          - m6i.xlarge
-          - c6i.xlarge
-          - c6i.2xlarge
-          - c6i.4xlarge
-          - c6i.8xlarge
+          - "e2-medium"
+          - "e2-standard-2"
+          - "e2-highmem-2"
+          - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
+          - "e2-custom-4-8192"
+          - "e2-custom-8-16384"
+          - "e2-custom-16-32768"
+          - "e2-custom-32-65536"
+          - "t2.medium"
+          - "m6i.large"
+          - "m6i.xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
       - key: enableTLS
         description: Whether to enable TLS for the database
         name: Enable TLS
@@ -588,7 +620,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
       - key: falkorDBNodeCreationBuffer
         description: Choose the buffer size for your database
@@ -610,7 +642,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
       - key: falkorDBTimeoutMax
         description: Choose the timeout max for your database
@@ -652,10 +684,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
     volumes:
       - source: ./data
         target: /data
@@ -710,7 +742,7 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
     x-omnistrate-actionhooks:
       - scope: CLUSTER
@@ -802,26 +834,37 @@ services:
         export: true
       - key: nodeInstanceType
         description: The size of the node instance. Check the documentation for more information.
-        name: Node Instance Type
+        name: Choose the instance type for your database
         type: String
         modifiable: true
         required: true
         export: true
         options:
-          - e2-medium
-          - e2-standard-2
-          - e2-standard-4
-          - e2-custom-4-8192
-          - e2-custom-8-16384
-          - e2-custom-16-32768
-          - e2-custom-32-65536
-          - t2.medium
-          - m6i.large
-          - m6i.xlarge
-          - c6i.xlarge
-          - c6i.2xlarge
-          - c6i.4xlarge
-          - c6i.8xlarge
+          - "e2-medium"
+          - "e2-standard-2"
+          - "e2-highmem-2"
+          - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
+          - "e2-custom-4-8192"
+          - "e2-custom-8-16384"
+          - "e2-custom-16-32768"
+          - "e2-custom-32-65536"
+          - "t2.medium"
+          - "m6i.large"
+          - "m6i.xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
         parameterDependencyMap:
           node-sz: nodeInstanceType
 
@@ -903,7 +946,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           node-sz: falkorDBCacheSize
@@ -929,7 +972,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           node-sz: falkorDBMaxQueuedQueries
@@ -979,16 +1022,17 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           node-sz: falkorDBQueryMemCapacity
     x-omnistrate-capabilities:
       backupConfiguration:
         backupRetentionInDays: 7
         backupPeriodInHours: 12
+        snapshotBeforeDeletion: false
     depends_on:
       - node-sz
 
@@ -1005,26 +1049,37 @@ services:
     x-omnistrate-api-params:
       - key: nodeInstanceType
         description: The size of the node instance. Check the documentation for more information.
-        name: Node Instance Type
+        name: Choose the instance type for your database
         type: String
         modifiable: true
         required: true
         export: true
         options:
-          - e2-medium
-          - e2-standard-2
-          - e2-standard-4
-          - e2-custom-4-8192
-          - e2-custom-8-16384
-          - e2-custom-16-32768
-          - e2-custom-32-65536
-          - t2.medium
-          - m6i.large
-          - m6i.xlarge
-          - c6i.xlarge
-          - c6i.2xlarge
-          - c6i.4xlarge
-          - c6i.8xlarge
+          - "e2-medium"
+          - "e2-standard-2"
+          - "e2-highmem-2"
+          - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
+          - "e2-custom-4-8192"
+          - "e2-custom-8-16384"
+          - "e2-custom-16-32768"
+          - "e2-custom-32-65536"
+          - "t2.medium"
+          - "m6i.large"
+          - "m6i.xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
@@ -1095,7 +1150,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
       - key: falkorDBNodeCreationBuffer
         description: Choose the buffer size for your database
@@ -1117,7 +1172,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
       - key: falkorDBTimeoutMax
         description: Choose the timeout max for your database
@@ -1159,10 +1214,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
     volumes:
       - source: ./data
         target: /data
@@ -1226,19 +1281,19 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "100m"
             memory: 50Mi
         healthcheck-sentinel:
           imageNameWithTag: $FalkorDBHealthcheckImage
           resourceLimits:
             cpu: "20m"
-            memory: 30Mi
+            memory: 50Mi
           args:
             - sentinel
         exporter-sentinel:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "100m"
             memory: 50Mi
           args:
             - "26379"
@@ -1253,9 +1308,9 @@ services:
       - scope: CLUSTER
         type: PRE_UPGRADE
         <<: *preupgradehook
-      - scope: CLUSTER
-        type: POST_UPGRADE
-        <<: *postupgradehook
+      # - scope: CLUSTER
+      #   type: POST_UPGRADE
+      #   <<: *postupgradehook
       - scope: NODE
         type: STARTUP_CHECK
         commandTemplate: |
@@ -1436,13 +1491,13 @@ services:
           imageNameWithTag: $FalkorDBHealthcheckImage
           resourceLimits:
             cpu: "20m"
-            memory: 30Mi
+            memory: 50Mi
           args:
             - sentinel
         exporter-sentinel:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
           args:
             - "26379"
@@ -1562,26 +1617,37 @@ services:
         export: true
       - key: nodeInstanceType
         description: The size of the node instance. Check the documentation for more information.
-        name: Node Instance Type
+        name: Choose the instance type for your database
         type: String
         modifiable: true
         required: true
         export: true
         options:
-          - e2-medium
-          - e2-standard-2
-          - e2-standard-4
-          - e2-custom-4-8192
-          - e2-custom-8-16384
-          - e2-custom-16-32768
-          - e2-custom-32-65536
-          - t2.medium
-          - m6i.large
-          - m6i.xlarge
-          - c6i.xlarge
-          - c6i.2xlarge
-          - c6i.4xlarge
-          - c6i.8xlarge
+          - "e2-medium"
+          - "e2-standard-2"
+          - "e2-highmem-2"
+          - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
+          - "e2-custom-4-8192"
+          - "e2-custom-8-16384"
+          - "e2-custom-16-32768"
+          - "e2-custom-32-65536"
+          - "t2.medium"
+          - "m6i.large"
+          - "m6i.xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
         parameterDependencyMap:
           node-mz: nodeInstanceType
 
@@ -1663,7 +1729,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           node-mz: falkorDBCacheSize
@@ -1689,7 +1755,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           node-mz: falkorDBMaxQueuedQueries
@@ -1739,16 +1805,17 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           node-mz: falkorDBQueryMemCapacity
     x-omnistrate-capabilities:
       backupConfiguration:
         backupRetentionInDays: 7
         backupPeriodInHours: 12
+        snapshotBeforeDeletion: false
     depends_on:
       - node-mz
 
@@ -1765,26 +1832,37 @@ services:
     x-omnistrate-api-params:
       - key: nodeInstanceType
         description: The size of the node instance. Check the documentation for more information.
-        name: Node Instance Type
+        name: Choose the instance type for your database
         type: String
         modifiable: true
         required: true
         export: true
         options:
-          - e2-medium
-          - e2-standard-2
-          - e2-standard-4
-          - e2-custom-4-8192
-          - e2-custom-8-16384
-          - e2-custom-16-32768
-          - e2-custom-32-65536
-          - t2.medium
-          - m6i.large
-          - m6i.xlarge
-          - c6i.xlarge
-          - c6i.2xlarge
-          - c6i.4xlarge
-          - c6i.8xlarge
+          - "e2-medium"
+          - "e2-standard-2"
+          - "e2-highmem-2"
+          - "e2-standard-4"
+          - "e2-highmem-4"
+          - "e2-standard-8"
+          - "e2-highmem-8"
+          - "e2-custom-4-8192"
+          - "e2-custom-8-16384"
+          - "e2-custom-16-32768"
+          - "e2-custom-32-65536"
+          - "t2.medium"
+          - "m6i.large"
+          - "m6i.xlarge"
+          - "m6i.2xlarge"
+          - "m6i.4xlarge"
+          - "m6i.8xlarge"
+          - "r6i.large"
+          - "r6i.xlarge"
+          - "r6i.2xlarge"
+          - "r6i.4xlarge"
+          - "c6i.xlarge"
+          - "c6i.2xlarge"
+          - "c6i.4xlarge"
+          - "c6i.8xlarge"
       - key: numReplicas
         description: Number of Replicas
         name: Number of Replicas
@@ -1855,7 +1933,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
       - key: falkorDBNodeCreationBuffer
         description: Choose the buffer size for your database
@@ -1877,7 +1955,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
       - key: falkorDBTimeoutMax
         description: Choose the timeout max for your database
@@ -1908,7 +1986,7 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "10000"
         limits:
           min: 0
           max:  1000000
@@ -1919,10 +1997,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
     volumes:
       - source: ./data
         target: /data
@@ -1987,19 +2065,19 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "100m"
             memory: 50Mi
         healthcheck-sentinel:
           imageNameWithTag: $FalkorDBHealthcheckImage
           resourceLimits:
             cpu: "20m"
-            memory: 30Mi
+            memory: 50Mi
           args:
             - sentinel
         exporter-sentinel:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "100m"
             memory: 50Mi
           args:
             - "26379"
@@ -2014,9 +2092,9 @@ services:
       - scope: CLUSTER
         type: PRE_UPGRADE
         <<: *preupgradehook
-      - scope: CLUSTER
-        type: POST_UPGRADE
-        <<: *postupgradehook
+      # - scope: CLUSTER
+      #   type: POST_UPGRADE
+      #   <<: *postupgradehook
       - scope: NODE
         type: STARTUP_CHECK
         commandTemplate: |
@@ -2196,13 +2274,13 @@ services:
           imageNameWithTag: $FalkorDBHealthcheckImage
           resourceLimits:
             cpu: "20m"
-            memory: 30Mi
+            memory: 50Mi
           args:
             - sentinel
         exporter-sentinel:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
           args:
             - "26379"

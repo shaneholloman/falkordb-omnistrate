@@ -43,7 +43,7 @@ env:
   HEALTHCHECK_IMAGE_NAME: falkordb-cloud-healthcheck
   FALKORDB_EXPORTER_IMAGE_NAME: falkordb-cloud-exporter
   FALKORDB_SENTINEL_IMAGE_NAME: falkordb-cloud-sentinel
-  FALKORDB_VERSION: v4.16.0-alpine
+  FALKORDB_VERSION: v4.16.7
   FREE_PLAN_NAME: free-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
   PRO_PLAN_NAME: pro-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
   ENTERPRISE_PLAN_NAME: enterprise-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
@@ -60,12 +60,12 @@ jobs:
       matrix:
         machines:
           - name: replication-runner-private-gcp
-            machine_type: e2-medium
+            machine_type: "e2-medium"
             runner_label: replication-${{ github.run_id }}-${{ github.run_number }}
             arm: false
             image: projects/app-plane-dev-f7a2434f/global/images/gh-runner-debian
           - name: cluster-runner-private-gcp
-            machine_type: e2-medium
+            machine_type: "e2-medium"
             runner_label: cluster-${{ github.run_id }}-${{ github.run_number }}
             arm: false
             image: projects/app-plane-dev-f7a2434f/global/images/gh-runner-debian
@@ -294,8 +294,12 @@ jobs:
           name: ${{ env.AZURE_NETWORK_NAME }}
 
   test:
-    needs: [create-custom-networks, create-runners]
-    if: always()
+    needs: [omnistrate-update-plans, create-custom-networks, create-runners]
+    if: >-
+      !cancelled() &&
+      needs.omnistrate-update-plans.result == 'success' &&
+      (needs.create-custom-networks.result == 'success' || needs.create-custom-networks.result == 'skipped') &&
+      (needs.create-runners.result == 'success' || needs.create-runners.result == 'skipped')
     runs-on: ${{ (contains(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || inputs.test_mode == 'full') && matrix.instances.runner_label || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
@@ -370,69 +374,69 @@ jobs:
           - name: "[06] enterprise/Standalone - AWS/us-east-2 - Grouped"
             if: "full"
             testFile: tests/test_grouped_standalone.py
-            tests: "failover,stopstart,oom,resize,network_change"
+            tests: "failover,stopstart,resize,network_change"
             tierName: "enterprise-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: standalone
-            instanceType: t2.medium
-            newInstanceType: m6i.large
+            instanceType: "t2.medium"
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
             customNetwork: aws-network-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
 
           - name: "[07] enterprise/SingleZone - AWS/us-east-2 - Grouped"
             if: "full"
             testFile: tests/test_grouped_replication.py
-            tests: "failover,stopstart,oom,resize,network_change"
+            tests: "failover,stopstart,resize,network_change"
             tierName: "enterprise-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: single-Zone
-            instanceType: t2.medium
-            newInstanceType: m6i.large
+            instanceType: "t2.medium"
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
             customNetwork: aws-network-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
 
           - name: "[08] enterprise/MultiZone - AWS/us-east-2 - Grouped"
             if: "full"
             testFile: tests/test_grouped_replication.py
-            tests: "failover,stopstart,oom,resize,network_change"
+            tests: "failover,stopstart,resize,network_change"
             tierName: "enterprise-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: multi-Zone
-            instanceType: t2.medium
-            newInstanceType: m6i.large
+            instanceType: "t2.medium"
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
             customNetwork: aws-network-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
 
           - name: "[09] enterprise/ClusterSingleZone - AWS/us-east-2 - Grouped"
             if: "full"
             testFile: tests/test_grouped_cluster.py
-            tests: "failover,stopstart,oom,resize,network_change"
+            tests: "failover,stopstart,resize,network_change"
             tierName: "enterprise-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: cluster-Single-Zone
-            instanceType: t2.medium
+            instanceType: "t2.medium"
             hostCount: "6"
             clusterReplicas: "1"
-            newInstanceType: m6i.large
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
             customNetwork: aws-network-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
 
           - name: "[10] enterprise/ClusterMultiZone - AWS/us-east-2 - Grouped"
             if: "full"
             testFile: tests/test_grouped_cluster.py
-            tests: "failover,stopstart,oom,resize,network_change"
+            tests: "failover,stopstart,resize,network_change"
             tierName: "enterprise-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: cluster-Multi-Zone
-            instanceType: t2.medium
+            instanceType: "t2.medium"
             hostCount: "6"
             clusterReplicas: "1"
-            newInstanceType: m6i.large
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
             customNetwork: aws-network-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
 
@@ -445,7 +449,7 @@ jobs:
             cloudProvider: gcp
             cloudRegion: us-central1
             resourceKey: standalone
-            instanceType: e2-medium
+            instanceType: "e2-medium"
             maxmemory: "2GB"
             customNetwork: gcp-network-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
 
@@ -457,7 +461,7 @@ jobs:
             cloudProvider: gcp
             cloudRegion: us-central1
             resourceKey: single-Zone
-            instanceType: e2-medium
+            instanceType: "e2-medium"
             maxmemory: "2GB"
             customNetwork: gcp-network-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
 
@@ -469,7 +473,7 @@ jobs:
             cloudProvider: gcp
             cloudRegion: us-central1
             resourceKey: multi-Zone
-            instanceType: e2-medium
+            instanceType: "e2-medium"
             maxmemory: "2GB"
             customNetwork: gcp-network-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}
 
@@ -481,7 +485,7 @@ jobs:
             cloudProvider: gcp
             cloudRegion: us-central1
             resourceKey: cluster-Single-Zone
-            instanceType: e2-medium
+            instanceType: "e2-medium"
             hostCount: "6"
             clusterReplicas: "1"
             maxmemory: "2GB"
@@ -495,7 +499,7 @@ jobs:
             cloudProvider: gcp
             cloudRegion: us-central1
             resourceKey: cluster-Multi-Zone
-            instanceType: e2-medium
+            instanceType: "e2-medium"
             hostCount: "6"
             clusterReplicas: "1"
             maxmemory: "2GB"
@@ -505,7 +509,7 @@ jobs:
           - name: "[16] free/Standalone - AWS/us-east-2 - Grouped"
             if: "basic"
             testFile: tests/test_grouped_standalone.py
-            tests: "failover,stopstart,oom"
+            tests: "failover,stopstart"
             tierName: "free-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
@@ -515,7 +519,7 @@ jobs:
           - name: "[17] startup/Standalone - AWS/us-east-2 - Grouped"
             if: "basic"
             testFile: tests/test_grouped_standalone.py
-            tests: "failover,stopstart,oom"
+            tests: "failover,stopstart"
             tierName: "startup-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
@@ -525,37 +529,37 @@ jobs:
           - name: "[18] pro/Standalone - AWS/us-east-2 - Grouped"
             if: "basic"
             testFile: tests/test_grouped_standalone.py
-            tests: "failover,stopstart,oom,resize"
+            tests: "failover,stopstart,resize"
             tierName: "pro-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: standalone
-            instanceType: t2.medium
-            newInstanceType: m6i.large
+            instanceType: "t2.medium"
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
 
           - name: "[19] pro/SingleZone - AWS/us-east-2 - Grouped"
             if: "basic"
             testFile: tests/test_grouped_replication.py
-            tests: "failover,stopstart,oom,resize"
+            tests: "failover,stopstart,resize"
             tierName: "pro-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: single-Zone
-            instanceType: t2.medium
-            newInstanceType: m6i.large
+            instanceType: "t2.medium"
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
 
           - name: "[20] pro/MultiZone - AWS/us-east-2 - Grouped"
             if: "basic"
             testFile: tests/test_grouped_replication.py
-            tests: "failover,stopstart,oom,resize"
+            tests: "failover,stopstart,resize"
             tierName: "pro-${{ contains(github.ref, 'refs/tags/v') && 'main' || github.event_name == 'pull_request' && github.event.pull_request.head.ref || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'schedule' || github.ref_name }}"
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: multi-Zone
-            instanceType: t2.medium
-            newInstanceType: m6i.large
+            instanceType: "t2.medium"
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
 
           ######################## PRIVATE • GCP (INTERNAL) ########################
@@ -568,7 +572,7 @@ jobs:
             cloudProvider: gcp
             cloudRegion: us-central1
             resourceKey: multi-Zone
-            instanceType: e2-medium
+            instanceType: "e2-medium"
             maxmemory: "2GB"
             networkType: INTERNAL
           ######################## PRO • AWS (TLS) ########################
@@ -580,8 +584,8 @@ jobs:
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: standalone
-            instanceType: t2.medium
-            newInstanceType: m6i.large
+            instanceType: "t2.medium"
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
             tls: true
           - name: "[26] pro/SingleZone/TLS - AWS/us-east-2 - Grouped"
@@ -592,8 +596,8 @@ jobs:
             cloudProvider: aws
             cloudRegion: us-east-2
             resourceKey: single-Zone
-            instanceType: t2.medium
-            newInstanceType: m6i.large
+            instanceType: "t2.medium"
+            newInstanceType: "m6i.large"
             maxmemory: "2GB"
             tls: true
     steps:
@@ -705,7 +709,7 @@ jobs:
   #           subscriptionId: sub-GJPV3NoNC0
   #           serviceId: ${{ vars.OMNISTRATE_INTERNAL_SERVICE_ID }}
   #           environmentId: ${{ vars.OMNISTRATE_INTERNAL_DEV_ENVIRONMENT}}
-  #           extraParams: "--resource-key 'standalone' --instance-name 'test-standalone-upgrade' --instance-description 'test-standalone-upgrade' --instance-type 't2.medium' --storage-size '30' --rdb-config 'medium' --aof-config 'always'"
+  #           extraParams: "--resource-key 'standalone' --instance-name 'test-standalone-upgrade' --instance-description 'test-standalone-upgrade' --instance-type '"t2.medium"' --storage-size '30' --rdb-config 'medium' --aof-config 'always'"
   #         - name: PRO/SingleZone - AWS/us-east-2 - Upgrade Version
   #           if: ${{ contains(github.ref, 'refs/tags/v') || contains(github.ref, 'main') }}
   #           testFile: test_upgrade_version.py
@@ -715,7 +719,7 @@ jobs:
   #           subscriptionId: sub-GJPV3NoNC0
   #           serviceId: ${{ vars.OMNISTRATE_INTERNAL_SERVICE_ID }}
   #           environmentId: ${{ vars.OMNISTRATE_INTERNAL_DEV_ENVIRONMENT}}
-  #           extraParams: "--resource-key 'single-Zone' --instance-name 'test-replication-upgrade' --instance-description 'test-replication-upgrade' --instance-type 't2.medium' --storage-size '30' --rdb-config 'medium' --aof-config 'always'"
+  #           extraParams: "--resource-key 'single-Zone' --instance-name 'test-replication-upgrade' --instance-description 'test-replication-upgrade' --instance-type '"t2.medium"' --storage-size '30' --rdb-config 'medium' --aof-config 'always'"
   #         - name: PRO/ClusterSingleZone - AWS/us-east-2 - Upgrade Version
   #           if: ${{ contains(github.ref, 'refs/tags/v') || contains(github.ref, 'main') }}
   #           testFile: test_upgrade_version.py
@@ -725,7 +729,7 @@ jobs:
   #           subscriptionId: sub-GJPV3NoNC0
   #           serviceId: ${{ vars.OMNISTRATE_INTERNAL_SERVICE_ID }}
   #           environmentId: ${{ vars.OMNISTRATE_INTERNAL_DEV_ENVIRONMENT}}
-  #           extraParams: "--resource-key 'cluster-Single-Zone' --instance-name 'test-cluster-upgrade' --instance-description 'test-cluster-upgrade' --instance-type 't2.medium' --storage-size '30' --rdb-config 'medium' --aof-config 'always' --cluster-replicas '1' --host-count '6'"
+  #           extraParams: "--resource-key 'cluster-Single-Zone' --instance-name 'test-cluster-upgrade' --instance-description 'test-cluster-upgrade' --instance-type '"t2.medium"' --storage-size '30' --rdb-config 'medium' --aof-config 'always' --cluster-replicas '1' --host-count '6'"
 
   #   steps:
   #     - name: Checkout

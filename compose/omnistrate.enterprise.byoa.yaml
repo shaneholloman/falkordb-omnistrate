@@ -75,7 +75,7 @@ x-clusterparam: &clusterparam
       type: Password
       modifiable: true
       required: true
-      export: false
+      export: true
     - key: RDBPersistenceConfig
       description: How often to save the RDB file to disk. Check the documentation for more information.
       name: RDB Persistence Config
@@ -109,7 +109,7 @@ x-clusterparam: &clusterparam
       export: true
       defaultValue: "25"
       limits:
-        min: 0
+        min: 1
         max: 256
     - key: falkorDBNodeCreationBuffer
       description: Choose the buffer size for your database
@@ -131,7 +131,7 @@ x-clusterparam: &clusterparam
       export: true
       defaultValue: "50"
       limits:
-        min: 0
+        min: 1
         max: 512
     - key: falkorDBTimeoutMax
       description: Choose the timeout max for your database
@@ -162,7 +162,7 @@ x-clusterparam: &clusterparam
       modifiable: false
       required: false
       export: true
-      defaultValue: "0"
+      defaultValue: "10000"
       limits:
         min: 0
         max: 1000000
@@ -173,10 +173,10 @@ x-clusterparam: &clusterparam
       modifiable: false
       required: false
       export: true
-      defaultValue: "0"
+      defaultValue: "21474836480"
       limits:
-        min: 0
-        max: 2000000000
+        min: 5242880
+        max: 21474836480
     - key: maxMemory
       description: Choose the maxmemory for your database (do not exceed InstanceType memory)
       name: FalkorDB Maxmemory
@@ -191,11 +191,16 @@ x-pre-upgrade-hook: &preupgradehook
     set -euo pipefail
     echo "Running BGREWRITEAOF before upgrade"
 
-    adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | base64 -d)
+    if [[ -f /run/secrets/adminpassword ]]; then
+      adminpass=$(cat /run/secrets/adminpassword)
+    else
+      adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | tr -d '"' | base64 -d)
+    fi
     if [[ -z "$adminpass" ]]; then
         echo "ERROR: Failed to retrieve admin password from secret. Cannot proceed with Redis operations." >&2
         exit 1
     fi
+
     readonly NODE_PORT="${NODE_PORT:-6379}"
 
     # Build redis-cli options safely
@@ -280,7 +285,12 @@ x-post-upgrade-hook: &postupgradehook
     set -euo pipefail
     # Constants
     readonly LINK="Please refer to the documentation for instructions on how to resolve this issue: https://github.com/FalkorDB/runbooks/blob/main/alerts/SentinelSplitBrainAlertsRunbook.md"
-    adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | base64 -d)
+    if [[ -f /run/secrets/adminpassword ]]; then
+      adminpass=$(cat /run/secrets/adminpassword)
+    else
+      adminpass=$(curl -s   --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"   https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/secrets | grep '.*adminpassword.*"$' | awk 'NR==1{print $2}' | tr -d '"' | base64 -d)
+    fi
+    
     if [[ -z "$adminpass" ]]; then
         echo "ERROR: Failed to retrieve admin password from secret. Cannot proceed with Redis operations." >&2
         exit 1
@@ -525,7 +535,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           node-s: falkorDBCacheSize
@@ -551,7 +561,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           node-s: falkorDBMaxQueuedQueries
@@ -601,10 +611,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           node-s: falkorDBQueryMemCapacity
       - key: maxMemory
@@ -621,6 +631,7 @@ services:
       backupConfiguration:
         backupRetentionInDays: 2
         backupPeriodInHours: 2
+        snapshotBeforeDeletion: false
     depends_on:
       - node-s
 
@@ -633,6 +644,8 @@ services:
         - cloudProvider: gcp
           apiParam: nodeInstanceType
         - cloudProvider: aws
+          apiParam: nodeInstanceType
+        - cloudProvider: azure
           apiParam: nodeInstanceType
     x-omnistrate-api-params:
       - key: nodeInstanceType
@@ -699,7 +712,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
       - key: falkorDBNodeCreationBuffer
         description: Choose the buffer size for your database
@@ -721,7 +734,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
       - key: falkorDBTimeoutMax
         description: Choose the timeout max for your database
@@ -763,10 +776,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
       - key: maxMemory
         description: Choose the maxmemory for your database (do not exceed InstanceType memory)
         name: FalkorDB Maxmemory
@@ -834,7 +847,7 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
     x-omnistrate-actionhooks:
       - scope: CLUSTER
@@ -1012,7 +1025,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           node-sz: falkorDBCacheSize
@@ -1038,7 +1051,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           node-sz: falkorDBMaxQueuedQueries
@@ -1088,10 +1101,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           node-sz: falkorDBQueryMemCapacity
       - key: maxMemory
@@ -1109,6 +1122,7 @@ services:
       backupConfiguration:
         backupRetentionInDays: 2
         backupPeriodInHours: 2
+        snapshotBeforeDeletion: false
     depends_on:
       - node-sz
 
@@ -1203,7 +1217,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
       - key: falkorDBNodeCreationBuffer
         description: Choose the buffer size for your database
@@ -1225,7 +1239,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
       - key: falkorDBTimeoutMax
         description: Choose the timeout max for your database
@@ -1267,10 +1281,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
       - key: maxMemory
         description: Choose the maxmemory for your database (do not exceed InstanceType memory)
         name: FalkorDB Maxmemory
@@ -1347,19 +1361,19 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "100m"
             memory: 50Mi
         healthcheck-sentinel:
           imageNameWithTag: $FalkorDBHealthcheckImage
           resourceLimits:
             cpu: "20m"
-            memory: 30Mi
+            memory: 50Mi
           args:
             - sentinel
         exporter-sentinel:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "100m"
             memory: 50Mi
           args:
             - "26379"
@@ -1374,9 +1388,9 @@ services:
       - scope: CLUSTER
         type: PRE_UPGRADE
         <<: *preupgradehook
-      - scope: CLUSTER
-        type: POST_UPGRADE
-        <<: *postupgradehook
+      # - scope: CLUSTER
+      #   type: POST_UPGRADE
+      #   <<: *postupgradehook
       - scope: NODE
         type: STARTUP_CHECK
         commandTemplate: |
@@ -1514,7 +1528,7 @@ services:
         - cloudProvider: aws
           name: t3a.small
         - cloudProvider: azure
-          name: standard_b2ls_v2
+          name: standard_d2als_v6
     environment:
       - RUN_NODE=0
       - RUN_SENTINEL=1
@@ -1562,13 +1576,13 @@ services:
           imageNameWithTag: $FalkorDBHealthcheckImage
           resourceLimits:
             cpu: "20m"
-            memory: 30Mi
+            memory: 50Mi
           args:
             - sentinel
         exporter-sentinel:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
           args:
             - "26379"
@@ -1775,7 +1789,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           node-mz: falkorDBCacheSize
@@ -1801,7 +1815,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           node-mz: falkorDBMaxQueuedQueries
@@ -1851,10 +1865,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           node-mz: falkorDBQueryMemCapacity
       - key: maxMemory
@@ -1871,6 +1885,7 @@ services:
       backupConfiguration:
         backupRetentionInDays: 2
         backupPeriodInHours: 2
+        snapshotBeforeDeletion: false
     depends_on:
       - node-mz
 
@@ -1965,7 +1980,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
       - key: falkorDBNodeCreationBuffer
         description: Choose the buffer size for your database
@@ -1987,7 +2002,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
       - key: falkorDBTimeoutMax
         description: Choose the timeout max for your database
@@ -2018,7 +2033,7 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "10000"
         limits:
           min: 0
           max:  1000000
@@ -2029,10 +2044,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
       - key: maxMemory
         description: Choose the maxmemory for your database (do not exceed InstanceType memory)
         name: FalkorDB Maxmemory
@@ -2109,19 +2124,19 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "100m"
             memory: 50Mi
         healthcheck-sentinel:
           imageNameWithTag: $FalkorDBHealthcheckImage
           resourceLimits:
             cpu: "20m"
-            memory: 30Mi
+            memory: 50Mi
           args:
             - sentinel
         exporter-sentinel:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "100m"
             memory: 50Mi
           args:
             - "26379"
@@ -2136,9 +2151,9 @@ services:
       - scope: CLUSTER
         type: PRE_UPGRADE
         <<: *preupgradehook
-      - scope: CLUSTER
-        type: POST_UPGRADE
-        <<: *postupgradehook
+      # - scope: CLUSTER
+      #   type: POST_UPGRADE
+      #   <<: *postupgradehook
       - scope: NODE
         type: STARTUP_CHECK
         commandTemplate: |
@@ -2275,7 +2290,7 @@ services:
         - cloudProvider: aws
           name: t3a.small
         - cloudProvider: azure
-          name: standard_b2ls_v2
+          name: standard_d2als_v6
     environment:
       - RUN_NODE=0
       - RUN_SENTINEL=1
@@ -2323,13 +2338,13 @@ services:
           imageNameWithTag: $FalkorDBHealthcheckImage
           resourceLimits:
             cpu: "20m"
-            memory: 30Mi
+            memory: 50Mi
           args:
             - sentinel
         exporter-sentinel:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
           args:
             - "26379"
@@ -2521,7 +2536,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           cluster-sz: falkorDBCacheSize
@@ -2547,7 +2562,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           cluster-sz: falkorDBMaxQueuedQueries
@@ -2597,10 +2612,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           cluster-sz: falkorDBQueryMemCapacity
       - key: maxMemory
@@ -2617,6 +2632,7 @@ services:
       backupConfiguration:
         backupRetentionInDays: 2
         backupPeriodInHours: 2
+        snapshotBeforeDeletion: false
     depends_on:
       - cluster-sz
       - cluster-sz-rebalance
@@ -2644,6 +2660,9 @@ services:
             instanceStorageSizeGi: 200
           aws:
             instanceStorageType: AWS::EBS_GP3
+            instanceStorageSizeGi: 200
+          azure:
+            instanceStorageType: AZURE::STANDARD_SSD
             instanceStorageSizeGi: 200
     secrets:
       - source: adminpasspath
@@ -2691,7 +2710,7 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
           args:
             - "6379"
@@ -2779,7 +2798,7 @@ services:
         - cloudProvider: aws
           name: t3a.small
         - cloudProvider: azure
-          name: standard_b2ls_v2
+          name: standard_d2als_v6
     <<: *rebalanceparam
     environment:
       - IS_MULTI_ZONE=0
@@ -2888,7 +2907,7 @@ services:
         export: true
         defaultValue: "25"
         limits:
-          min: 0
+          min: 1
           max:  256
         parameterDependencyMap:
           cluster-mz: falkorDBCacheSize
@@ -2914,7 +2933,7 @@ services:
         export: true
         defaultValue: "50"
         limits:
-          min: 0
+          min: 1
           max:  512
         parameterDependencyMap:
           cluster-mz: falkorDBMaxQueuedQueries
@@ -2964,10 +2983,10 @@ services:
         modifiable: false
         required: false
         export: true
-        defaultValue: "0"
+        defaultValue: "21474836480"
         limits:
-          min: 0
-          max:  2000000000
+          min: 5242880
+          max:  21474836480
         parameterDependencyMap:
           cluster-mz: falkorDBQueryMemCapacity
       - key: maxMemory
@@ -2984,6 +3003,7 @@ services:
       backupConfiguration:
         backupRetentionInDays: 2
         backupPeriodInHours: 2
+        snapshotBeforeDeletion: false
     depends_on:
       - cluster-mz
       - cluster-mz-rebalance
@@ -3012,6 +3032,9 @@ services:
           aws:
             instanceStorageType: AWS::EBS_GP3
             instanceStorageSizeGi: 200
+          azure:
+            instanceStorageType: AZURE::STANDARD_SSD
+            instanceStorageSizeGi: 200
     secrets:
       - source: adminpasspath
         target: /run/secrets/adminpassword
@@ -3039,6 +3062,7 @@ services:
       - FALKORDB_TIMEOUT_DEFAULT=$var.falkorDBTimeoutDefault
       - FALKORDB_RESULT_SET_SIZE=$var.falkorDBResultSetSize
       - FALKORDB_QUERY_MEM_CAPACITY=$var.falkorDBQueryMemCapacity
+      - SKIP_HEALTH_CHECK=false
       - CLUSTER_REPLICAS=1
     ports:
       - "6379"
@@ -3056,7 +3080,7 @@ services:
         exporter:
           imageNameWithTag: $FalkorDBExporterImage
           resourceLimits:
-            cpu: "50m"
+            cpu: "200m"
             memory: 50Mi
           args:
             - "6379"
@@ -3142,7 +3166,7 @@ services:
         - cloudProvider: aws
           name: t3a.small
         - cloudProvider: azure
-          name: standard_b2ls_v2
+          name: standard_d2als_v6
     <<: *rebalanceparam
     environment:
       - IS_MULTI_ZONE=1
