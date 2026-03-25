@@ -35,4 +35,6 @@ RUN apk upgrade --no-cache && \
     chmod 700 "${FALKORDB_HOME}" && \
     chown -R "$USER":"$GROUPNAME" /falkordb
 
+USER $USER:$GROUPNAME
+
 ENTRYPOINT [ "/usr/local/bin/exporter-entrypoint.sh" ]

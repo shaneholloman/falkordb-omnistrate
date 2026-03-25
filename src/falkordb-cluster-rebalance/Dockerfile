@@ -17,5 +17,10 @@ RUN python3 -m venv /rebalance/venv && \
   pip install --upgrade pip && \
   pip install -r /rebalance/src/requirements.txt
 
+# Create a non-root user
+RUN useradd -m -u 1000 rebalance && \
+    chown -R rebalance:rebalance /rebalance
+
+USER rebalance
 
 CMD ["venv/bin/python", "-u", "/rebalance/src/main.py"]
