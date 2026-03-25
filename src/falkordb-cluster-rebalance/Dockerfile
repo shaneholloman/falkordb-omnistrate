@@ -14,7 +14,7 @@ RUN apt-get update && \
 
 RUN python3 -m venv /rebalance/venv && \
   . /rebalance/venv/bin/activate && \
-  pip install --upgrade pip wheel jaraco-context && \
+  pip install --upgrade pip && \
   pip install -r /rebalance/src/requirements.txt
 
 
