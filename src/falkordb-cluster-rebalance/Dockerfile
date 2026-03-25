@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 RUN mkdir -p /rebalance
 
@@ -9,11 +9,12 @@ COPY src/falkordb-cluster-rebalance/ /rebalance/
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
   git \
-  redis
+  redis && \
+  rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv /rebalance/venv && \
   . /rebalance/venv/bin/activate && \
-  pip install --upgrade pip && \
+  pip install --upgrade pip wheel jaraco-context && \
   pip install -r /rebalance/src/requirements.txt
 
 
