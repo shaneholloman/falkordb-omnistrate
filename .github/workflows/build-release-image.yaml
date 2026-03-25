@@ -90,7 +90,7 @@ jobs:
           tags: falkordb/${{ matrix.image.image_name }}:${{ steps.set_tag.outputs.tag }}, falkordb/${{ matrix.image.image_name }}:latest-${{ matrix.platform }}
 
       - name: Scan image with Grype
-        uses: anchore/scan-action@1638637db639e0ade3258b51db49a9a137574c3e # v6
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v6
         id: grype
         with:
           image: falkordb/${{ matrix.image.image_name }}:${{ steps.set_tag.outputs.tag }}-${{ matrix.platform }}
