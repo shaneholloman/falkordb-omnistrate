@@ -1184,6 +1184,8 @@ services:
         required: true
         export: true
         defaultValue: "falkordb"
+        parameterDependencyMap:
+          sentinel-mz: falkordbUser
       - key: falkordbPassword
         description: Choose a default password for your database. Updating this value after deployment will restart the instance.
         name: FalkorDB Password
@@ -1956,6 +1958,8 @@ services:
         required: true
         export: true
         defaultValue: "falkordb"
+        parameterDependencyMap:
+          sentinel-mz: falkordbUser
       - key: falkordbPassword
         description: Choose a default password for your database. Updating this value after deployment will restart the instance.
         name: FalkorDB Password
