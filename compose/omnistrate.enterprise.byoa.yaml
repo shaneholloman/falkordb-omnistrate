@@ -224,7 +224,7 @@ x-pre-upgrade-hook: &preupgradehook
 
         while [[ $attempt -le $MAX_RETRIES ]]; do
             set +e
-            output=$(redis-cli "${REDIS_OPTS[@]}" -h "$host" -p "$port" "$@" 2>&1)
+            output=$(timeout 10 redis-cli "${REDIS_OPTS[@]}" -h "$host" -p "$port" "$@" 2>&1)
             exit_code=$?
             set -e
 
@@ -259,10 +259,10 @@ x-pre-upgrade-hook: &preupgradehook
       # Wait for AOF rewrite to complete
       echo "Waiting for AOF rewrite to complete on $node_host..."
       local max_wait=300  # Maximum wait time in seconds (5 minutes)
-      local elapsed=0
       local check_interval=2
+      local deadline=$((SECONDS + max_wait))
 
-      while [ $elapsed -lt $max_wait ]; do
+      while [ $SECONDS -lt $deadline ]; do
         local aof_status
         aof_status=$(redis_exec "$node_host" "$NODE_PORT" INFO persistence 2>/dev/null | grep "aof_rewrite_in_progress" | cut -d: -f2 | tr -d '\r') || true
 
@@ -272,8 +272,7 @@ x-pre-upgrade-hook: &preupgradehook
         fi
 
         sleep $check_interval
-        elapsed=$((elapsed + check_interval))
-        echo "Still waiting... (${elapsed}s elapsed)"
+        echo "Still waiting... ($((deadline - SECONDS))s remaining)"
       done
 
       echo "Warning: AOF rewrite did not complete within ${max_wait}s on $node_host"
