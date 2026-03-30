@@ -365,6 +365,10 @@ fn get_health_config_from_configmap() -> Result<HealthConfig, Box<dyn std::error
                     Ok(HealthConfig::default())
                 }
             }
+            Ok(Err(kube::Error::Api(ref err))) if err.code == 404 => {
+                // ConfigMap is optional — not found is expected when it hasn't been created.
+                Ok(HealthConfig::default())
+            }
             Ok(Err(e)) => {
                 eprintln!("healthcheck: Kubernetes API error fetching ConfigMap \"{}\": {}; using defaults.", name, e);
                 Ok(HealthConfig::default())
