@@ -47,7 +47,7 @@ x-pre-upgrade-hook: &preupgradehook
     # Add TLS flag if enabled
     [[ "${TLS:-false}" == "true" ]] && REDIS_OPTS+=(--tls)
 
-    readonly MAX_RETRIES=3
+    readonly MAX_RETRIES=10
     readonly RETRY_DELAY=2
 
     redis_exec() {
