@@ -5,7 +5,7 @@ FROM falkordb/falkordb-server:$FALKORDB_VERSION
 RUN apt-get update && \
     apt-get -f install -y && \
     apt-get upgrade -y && \
-    ln -sf /bin/true /usr/local/bin/update-rc.d && \
+    ln -sf /bin/true /usr/sbin/update-rc.d && \
     apt-get install -y --no-install-recommends bash curl jq openssl supervisor ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
