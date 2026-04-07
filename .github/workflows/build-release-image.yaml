@@ -92,6 +92,9 @@ jobs:
       - name: Scan image with Grype
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v6
         id: grype
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_PULL_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PULL_PASSWORD }}
         with:
           image: falkordb/${{ matrix.image.image_name }}:${{ steps.set_tag.outputs.tag }}
           fail-build: true
