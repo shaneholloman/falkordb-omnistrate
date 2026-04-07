@@ -5,7 +5,7 @@ FROM falkordb/falkordb-server:$FALKORDB_VERSION
 RUN apt-get update && \
     apt-get -f install -y && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends bash curl jq openssl supervisor ca-certificates && \
+    apt-get install -y --no-install-recommends bash curl jq openssl supervisor ca-certificates init-system-helpers && \
     rm -rf /var/lib/apt/lists/*
 
 ADD https://secure.globalsign.com/cacert/root-r1.crt /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt
