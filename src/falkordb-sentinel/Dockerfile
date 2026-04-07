@@ -3,6 +3,7 @@ ARG FALKORDB_VERSION=v4.18.0
 FROM falkordb/falkordb-server:$FALKORDB_VERSION
 
 RUN apt-get update && \
+    apt-get -f install -y && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends bash curl jq openssl supervisor ca-certificates && \
     rm -rf /var/lib/apt/lists/*
