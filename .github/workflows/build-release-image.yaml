@@ -89,17 +89,13 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.image.image_name }}-${{ matrix.platform }}
           tags: falkordb/${{ matrix.image.image_name }}:${{ steps.set_tag.outputs.tag }}, falkordb/${{ matrix.image.image_name }}:latest-${{ matrix.platform }}
 
-      - name: Login to Docker Hub for Grype scan
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKER_PULL_USERNAME }}
-          password: ${{ secrets.DOCKER_PULL_PASSWORD }}
-
       - name: Scan image with Grype
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v6
         id: grype
         with:
           image: falkordb/${{ matrix.image.image_name }}:${{ steps.set_tag.outputs.tag }}
+          registry-username: ${{ secrets.DOCKER_USERNAME }}
+          registry-password: ${{ secrets.DOCKER_PASSWORD }}
           fail-build: true
           severity-cutoff: high
           output-format: sarif
