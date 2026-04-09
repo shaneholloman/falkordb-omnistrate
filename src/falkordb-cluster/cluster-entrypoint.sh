@@ -242,6 +242,53 @@ update_ips_in_nodes_conf() {
     echo "The port is: $NODE_PORT"
 
     sed -i "s/$res/$POD_IP:$NODE_PORT@$BUS_PORT/" $DATA_DIR/nodes.conf
+
+    # Fix IPs for all other nodes in nodes.conf.
+    # When restoring a cluster in the same namespace, the nodes.conf from the backup
+    # may contain stale IPs for every node. Resolve each node's hostname and update
+    # the IP before starting the server so it does not connect to the old deployment.
+    # NOTE: We snapshot the file content first so that in-loop sed -i modifications
+    # do not affect the iteration.
+    local nodes_content
+    nodes_content=$(cat "$DATA_DIR/nodes.conf")
+    while IFS= read -r line; do
+      # Skip the "myself" line, comment lines, and empty lines
+      if [[ "$line" =~ myself ]] || [[ -z "$line" ]] || [[ "$line" =~ ^# ]]; then
+        continue
+      fi
+
+      # Second field format: <ip>:<port>@<bus_port>[,<hostname>[:<tls_port>]]
+      local old_addr
+      old_addr=$(echo "$line" | awk '{print $2}' | cut -d',' -f1)
+      local old_ip
+      old_ip=$(echo "$old_addr" | cut -d':' -f1)
+
+      # Extract hostname (the part after the comma, before any colon)
+      local hostname
+      hostname=$(echo "$line" | awk '{print $2}' | cut -d',' -f2 | cut -d':' -f1)
+
+      if [[ -z "$hostname" || "$hostname" == "$old_ip" ]]; then
+        echo "No resolvable hostname found for node with addr: $old_addr, skipping"
+        continue
+      fi
+
+      # Resolve current IP for this node's hostname
+      local new_ip
+      new_ip=$(getent hosts "$hostname" 2>/dev/null | awk '{print $1}')
+
+      if [[ -z "$new_ip" ]]; then
+        echo "Could not resolve hostname: $hostname, skipping IP update for this node"
+        continue
+      fi
+
+      if [[ "$old_ip" != "$new_ip" ]]; then
+        echo "Updating IP for node $hostname: $old_ip -> $new_ip"
+        # Anchor on leading space and trailing colon to avoid partial IP matches.
+        # No global flag: each IP appears at most once per line in nodes.conf.
+        sed -i "s| $old_ip:| $new_ip:|" "$DATA_DIR/nodes.conf"
+      fi
+    done <<< "$nodes_content"
+
     cat $DATA_DIR/nodes.conf
 
   else
