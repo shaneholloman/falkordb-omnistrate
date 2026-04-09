@@ -141,8 +141,8 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: falkordb/${{ matrix.image-name }}:dev-${{ github.event.head_commit.id || github.run_id }}
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache,mode=max
+          cache-from: type=gha,scope=${{ matrix.image.image_name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.image_name }}
 
       - name: Scan image with Grype
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v6
