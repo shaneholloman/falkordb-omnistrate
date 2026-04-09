@@ -209,95 +209,121 @@ ensure_replica_connects_to_the_right_master_ip() {
 
 }
 
+resolve_host_ip() {
+  local host=$1
+  local description=${2:-$1}
+  local timeout_seconds=${3:-300}
+  local deadline=$((SECONDS + timeout_seconds))
+  local resolved_ip
+
+  if [[ $host =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$host"
+    return 0
+  fi
+
+  while true; do
+    resolved_ip=$(getent hosts "$host" 2>/dev/null | awk '{print $1; exit}')
+    if [[ -n "$resolved_ip" ]]; then
+      echo "$resolved_ip"
+      return 0
+    fi
+
+    if (( SECONDS >= deadline )); then
+      echo "Timed out trying to resolve ip for $description: $host" >&2
+      return 1
+    fi
+
+    echo "Waiting for $description to resolve: $host" >&2
+    sleep 3
+  done
+}
+
 update_ips_in_nodes_conf() {
   # Replace old ip with new one (external ip)
   # This fixes the issue where when a node restarts it does not update its own ip
   # this is fixed by getting the new public ip using the command "getent hosts $NODE_HOST" (NODE_HOST
   # contains the domain name of the current node) and updating the nodes.conf file with the new ip before starting the redis server.
+  # All cluster hostnames must resolve before Redis starts so restored nodes.conf entries do not
+  # reconnect to stale backup IPs during initialization.
 
-  local NODE_PORT=$NODE_PORT
+  local node_port_for_nodes_conf=$NODE_PORT
+  local tmp_nodes_conf
+  local nodes_content
 
   if [[ "$TLS" == "true" ]]; then
-    NODE_PORT=0
+    node_port_for_nodes_conf=0
   fi
 
-  if [[ -f "$DATA_DIR/nodes.conf" && -s "$DATA_DIR/nodes.conf" ]]; then
-    res=$(cat $DATA_DIR/nodes.conf | grep myself | awk '{print $2}' | cut -d',' -f1)
+  if [[ ! -f "$DATA_DIR/nodes.conf" || ! -s "$DATA_DIR/nodes.conf" ]]; then
+    echo "First time running the node.."
+    return 0
+  fi
 
-    tout=$(($(date +%s) + 300))
-    while true; do
-      if [[ $(date +%s) -gt $tout ]]; then
-        echo "Timedout trying to resolve ip for host: $HOSTNAME"
-        exit 1
+  nodes_content=$(cat "$DATA_DIR/nodes.conf")
+  tmp_nodes_conf="$DATA_DIR/nodes.conf.tmp"
+  : > "$tmp_nodes_conf"
+
+  while IFS= read -r line; do
+    local current_line="$line"
+
+    if [[ -z "$line" || "$line" =~ ^# || "$line" != *"@"* ]]; then
+      printf '%s\n' "$current_line" >> "$tmp_nodes_conf"
+      continue
+    fi
+
+    # Second field format: <ip>:<port>@<bus_port>[,<hostname>[:<tls_port>]]
+    local old_addr
+    old_addr=$(echo "$line" | awk '{print $2}' | cut -d',' -f1)
+
+    if [[ -z "$old_addr" ]]; then
+      printf '%s\n' "$current_line" >> "$tmp_nodes_conf"
+      continue
+    fi
+
+    local old_ip
+    old_ip=$(echo "$old_addr" | cut -d':' -f1)
+
+    if [[ "$line" =~ myself ]]; then
+      local self_ip=${POD_IP:-}
+
+      if [[ -z "$self_ip" ]]; then
+        self_ip=$(resolve_host_ip "$NODE_HOST" "current node host") || {
+          rm -f "$tmp_nodes_conf"
+          exit 1
+        }
       fi
-      ip=$(getent hosts $NODE_HOST | awk '{print $1}')
 
-      if [[ -n $ip ]]; then
-        break
-      fi
-    done
-
-    echo "The old ip is: $res"
-    echo "The new ip is: $POD_IP"
-    echo "The port is: $NODE_PORT"
-
-    sed -i "s/$res/$POD_IP:$NODE_PORT@$BUS_PORT/" $DATA_DIR/nodes.conf
-
-    # Fix IPs for all other nodes in nodes.conf.
-    # When restoring a cluster in the same namespace, the nodes.conf from the backup
-    # may contain stale IPs for every node. Resolve each node's hostname and update
-    # the IP before starting the server so it does not connect to the old deployment.
-    # NOTE: We snapshot the file content first so that in-loop sed -i modifications
-    # do not affect the iteration.
-    local nodes_content
-    nodes_content=$(cat "$DATA_DIR/nodes.conf")
-    while IFS= read -r line; do
-      # Skip the "myself" line, comment lines, and empty lines
-      if [[ "$line" =~ myself ]] || [[ -z "$line" ]] || [[ "$line" =~ ^# ]]; then
-        continue
-      fi
-
-      # Second field format: <ip>:<port>@<bus_port>[,<hostname>[:<tls_port>]]
-      local old_addr
-      old_addr=$(echo "$line" | awk '{print $2}' | cut -d',' -f1)
-      local old_ip
-      old_ip=$(echo "$old_addr" | cut -d':' -f1)
-
-      # Extract hostname (the part after the comma, before any colon)
+      local self_addr="$self_ip:$node_port_for_nodes_conf@$BUS_PORT"
+      echo "Updating local node address: $old_addr -> $self_addr"
+      current_line="${line/$old_addr/$self_addr}"
+    else
       local hostname
       hostname=$(echo "$line" | awk '{print $2}' | cut -d',' -f2 | cut -d':' -f1)
 
       if [[ -z "$hostname" || "$hostname" == "$old_ip" ]]; then
         echo "No resolvable hostname found for node with addr: $old_addr, skipping"
-        continue
+      else
+        local new_ip
+        new_ip=$(resolve_host_ip "$hostname" "cluster node hostname") || {
+          rm -f "$tmp_nodes_conf"
+          exit 1
+        }
+
+        if [[ "$old_ip" != "$new_ip" ]]; then
+          local new_addr="$new_ip:${old_addr#*:}"
+          echo "Updating IP for node $hostname: $old_addr -> $new_addr"
+          current_line="${line/$old_addr/$new_addr}"
+        fi
       fi
+    fi
 
-      # Resolve current IP for this node's hostname
-      local new_ip
-      new_ip=$(getent hosts "$hostname" 2>/dev/null | awk '{print $1}')
+    printf '%s\n' "$current_line" >> "$tmp_nodes_conf"
+  done <<< "$nodes_content"
 
-      if [[ -z "$new_ip" ]]; then
-        echo "Could not resolve hostname: $hostname, skipping IP update for this node"
-        continue
-      fi
-
-      if [[ "$old_ip" != "$new_ip" ]]; then
-        echo "Updating IP for node $hostname: $old_ip -> $new_ip"
-        # Anchor on leading space and trailing colon to avoid partial IP matches.
-        # No global flag: each IP appears at most once per line in nodes.conf.
-        sed -i "s| $old_ip:| $new_ip:|" "$DATA_DIR/nodes.conf"
-      fi
-    done <<< "$nodes_content"
-
-    cat $DATA_DIR/nodes.conf
-
-  else
-    echo "First time running the node.."
-  fi
+  mv "$tmp_nodes_conf" "$DATA_DIR/nodes.conf"
+  cat "$DATA_DIR/nodes.conf"
   return 0
 }
-
-update_ips_in_nodes_conf
 
 fix_namespace_in_config_files() {
   # Use INSTANCE_ID environment variable to get the current namespace
@@ -660,9 +686,10 @@ if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then
   fi
 fi
 
-# Fix namespace in config files before starting the server
-# This must be called after node.conf is created/copied but before server starts
+# Fix namespace and rewrite restored peer IPs before starting the server.
+# Hostname rewrites must happen first so nodes.conf resolves against the current deployment.
 fix_namespace_in_config_files
+update_ips_in_nodes_conf
 
 run_node
 
