@@ -1,74 +1,109 @@
 #!/bin/bash
 
-DATE_NOW=$(date +"%Y%m%d%H%M%S")
+read_secret_or_env() {
+  local secret_path=$1
+  local env_name=$2
 
-RUN_SENTINEL=${RUN_SENTINEL:-0}
-TLS=${TLS:-false}
-NODE_INDEX=${NODE_INDEX:-0}
-DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
+  if [[ -f "$secret_path" ]] && [[ -s "$secret_path" ]]; then
+    cat "$secret_path"
+  else
+    printf '%s' "${!env_name:-}"
+  fi
+}
 
-SAVE_LOGS_TO_FILE=${SAVE_LOGS_TO_FILE:-1}
-REPLACE_SENTINEL_CONF=${REPLACE_SENTINEL_CONF:-0}
+resolve_host_ip() {
+  local host=$1
+  local description=${2:-$1}
+  local timeout_seconds=${3:-300}
+  local deadline=$((SECONDS + timeout_seconds))
+  local resolved_ip
 
-FALKORDB_USER=${FALKORDB_USER:-falkordb}
-#FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-''}
-if [[ -f "/run/secrets/falkordbpassword" ]] && [[ -s "/run/secrets/falkordbpassword" ]]; then
-  FALKORDB_PASSWORD=$(cat "/run/secrets/falkordbpassword")
-elif [[ -n "$FALKORDB_PASSWORD" ]]; then
-  FALKORDB_PASSWORD=$FALKORDB_PASSWORD
-else
-  FALKORDB_PASSWORD=''
-fi
-#ADMIN_PASSWORD=${ADMIN_PASSWORD:-''}
-if [[ -f "/run/secrets/adminpassword" ]] && [[ -s "/run/secrets/adminpassword" ]]; then
-  ADMIN_PASSWORD=$(cat "/run/secrets/adminpassword")
+  if [[ $host =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$host"
+    return 0
+  fi
+
+  while true; do
+    resolved_ip=$(getent hosts "$host" 2>/dev/null | awk '{print $1; exit}')
+    if [[ -n "$resolved_ip" ]]; then
+      echo "$resolved_ip"
+      return 0
+    fi
+
+    if (( SECONDS >= deadline )); then
+      echo "Timed out trying to resolve ip for $description: $host" >&2
+      return 1
+    fi
+
+    echo "Waiting for $description to resolve: $host" >&2
+    sleep 3
+  done
+}
+
+load_credentials() {
+  FALKORDB_USER=${FALKORDB_USER:-falkordb}
+  FALKORDB_PASSWORD=$(read_secret_or_env "/run/secrets/falkordbpassword" "FALKORDB_PASSWORD")
+  ADMIN_PASSWORD=$(read_secret_or_env "/run/secrets/adminpassword" "ADMIN_PASSWORD")
   export ADMIN_PASSWORD
-elif [[ -n "$ADMIN_PASSWORD" ]]; then
-  export ADMIN_PASSWORD=$ADMIN_PASSWORD
-else
-  export ADMIN_PASSWORD=''
-fi
+}
 
-LOG_LEVEL=${LOG_LEVEL:-notice}
+initialize_defaults() {
+  RUN_SENTINEL=${RUN_SENTINEL:-0}
+  TLS=${TLS:-false}
+  NODE_INDEX=${NODE_INDEX:-0}
+  DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
+  SAVE_LOGS_TO_FILE=${SAVE_LOGS_TO_FILE:-1}
+  REPLACE_SENTINEL_CONF=${REPLACE_SENTINEL_CONF:-0}
+  LOG_LEVEL=${LOG_LEVEL:-notice}
+  NODE_HOST=${NODE_HOST:-localhost}
+  NODE_PORT=${NODE_PORT:-6379}
+  SENTINEL_HOST=sentinel-$(echo $RESOURCE_ALIAS | cut -d "-" -f 2)-0.$LOCAL_DNS_SUFFIX
+  SENTINEL_PORT=${SENTINEL_PORT:-26379}
+  ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
+  TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
+  SELFSIGNED_CA_PATH="$TLS_MOUNT_PATH/selfsigned-ca.crt"
+  MASTER_NAME=${MASTER_NAME:-master}
+  SENTINEL_QUORUM=${SENTINEL_QUORUM:-2}
+  SENTINEL_DOWN_AFTER=${SENTINEL_DOWN_AFTER:-30000}
+  SENTINEL_FAILOVER=${SENTINEL_FAILOVER:-180000}
+}
 
-NODE_HOST=${NODE_HOST:-localhost}
-NODE_PORT=${NODE_PORT:-6379}
-SENTINEL_HOST=sentinel-$(echo $RESOURCE_ALIAS | cut -d "-" -f 2)-0.$LOCAL_DNS_SUFFIX
-SENTINEL_PORT=${SENTINEL_PORT:-26379}
-ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
-TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
-SELFSIGNED_CA_PATH="$TLS_MOUNT_PATH/selfsigned-ca.crt"
-TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
-AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
-
-MASTER_NAME=${MASTER_NAME:-master}
-SENTINEL_QUORUM=${SENTINEL_QUORUM:-2}
-SENTINEL_DOWN_AFTER=${SENTINEL_DOWN_AFTER:-30000}
-SENTINEL_FAILOVER=${SENTINEL_FAILOVER:-180000}
-
-# Add backward compatibility for /data folder
-if [[ "$DATA_DIR" != '/data' ]]; then
-  mkdir -p $DATA_DIR
-  if [[ -d '/data' ]]; then
-    # create simlink
-    ln -s /data $DATA_DIR
+prepare_data_dir() {
+  if [[ "$DATA_DIR" != '/data' ]]; then
+    mkdir -p "$DATA_DIR"
+    if [[ -d '/data' ]] && [[ ! -e "$DATA_DIR/data" ]]; then
+      ln -s /data "$DATA_DIR"
+    fi
   fi
-fi
 
-if [[ $(basename "$DATA_DIR") != 'data' ]]; then DATA_DIR=$DATA_DIR/data; fi
+  if [[ $(basename "$DATA_DIR") != 'data' ]]; then DATA_DIR=$DATA_DIR/data; fi
+}
 
-# If TLS is enabled and selfsigned-ca.crt exists, create a combined CA cert file
-if [[ "$TLS" == "true" ]] && [[ -f "$SELFSIGNED_CA_PATH" ]]; then
-  if ! cat "$ROOT_CA_PATH" "$SELFSIGNED_CA_PATH" > "$DATA_DIR/selfsigned-tls-combined.pem"; then
-    echo "Failed to create combined CA cert file"
-    exit 1
+prepare_tls_ca_bundle() {
+  if [[ "$TLS" == "true" ]] && [[ -f "$SELFSIGNED_CA_PATH" ]]; then
+    if ! cat "$ROOT_CA_PATH" "$SELFSIGNED_CA_PATH" > "$DATA_DIR/selfsigned-tls-combined.pem"; then
+      echo "Failed to create combined CA cert file"
+      exit 1
+    fi
+    ROOT_CA_PATH="$DATA_DIR/selfsigned-tls-combined.pem"
   fi
-  ROOT_CA_PATH="$DATA_DIR/selfsigned-tls-combined.pem"
-  TLS_CONNECTION_STRING="--tls --cacert $ROOT_CA_PATH"
-fi
+}
 
-SENTINEL_CONF_FILE=$DATA_DIR/sentinel.conf
-SENTINEL_LOG_FILE_PATH=$(if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then echo $DATA_DIR/sentinel_$DATE_NOW.log; else echo ""; fi)
+initialize_runtime_paths() {
+  TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
+  AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
+  DATE_NOW=$(date +"%Y%m%d%H%M%S")
+  SENTINEL_CONF_FILE=$DATA_DIR/sentinel.conf
+  SENTINEL_LOG_FILE_PATH=$(if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then echo $DATA_DIR/sentinel_$DATE_NOW.log; else echo ""; fi)
+}
+
+init_environment() {
+  load_credentials
+  initialize_defaults
+  prepare_data_dir
+  prepare_tls_ca_bundle
+  initialize_runtime_paths
+}
 
 handle_sigterm() {
   echo "Caught SIGTERM"
@@ -79,8 +114,6 @@ handle_sigterm() {
 
   exit 0
 }
-
-trap handle_sigterm SIGTERM
 
 wait_until_node_host_resolves() {
   # If $1 is an IP address, return
@@ -152,15 +185,9 @@ fix_namespace_in_config_files() {
     
     # Check and fix sentinel.conf
     if [[ -f "$SENTINEL_CONF_FILE" ]]; then
-      # First check if the file contains the current DNS suffix - if so, likely no replacement needed
-      # But we still run the replacement to handle mixed cases where some entries might be outdated
       echo "Checking sentinel.conf for DNS suffix mismatches"
-      # Replace old DNS suffixes with current one for specific configuration parameters
+      # Replace old DNS suffixes with current one
       # This regex matches the Omnistrate DNS suffix structure: hc-<ID>.<REGION>.<CLOUD>.<HASH>.<TLD>
-      # Example: hc-abc123.us-central1.gcp.f2e0a955bb84.cloud
-      # Pattern: captures hostname (may contain underscores, must have at least one letter to avoid matching IPs), 
-      # then matches the DNS suffix structure and replaces it with the current DNS suffix
-      # The replacement is idempotent - if DNS suffix is already correct, it stays the same
       sed -i -E "s/([a-zA-Z0-9_-]*[a-zA-Z][a-zA-Z0-9_-]*)\.hc-[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-f0-9]+\.[a-zA-Z]+/\1.${escaped_dns_suffix}/g" "$SENTINEL_CONF_FILE"
     fi
   else
@@ -168,77 +195,87 @@ fix_namespace_in_config_files() {
   fi
 }
 
-# If sentinel.conf doesn't exist or $REPLACE_SENTINEL_CONF=1, copy it from /falkordb
-if [ ! -f $SENTINEL_CONF_FILE ] || [ "$REPLACE_SENTINEL_CONF" -eq "1" ]; then
-  echo "Copying sentinel.conf from /falkordb"
-  cp /falkordb/sentinel.conf $SENTINEL_CONF_FILE
-fi
-
-# Create log files if they don't exist
-if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then
-  if [ "$RUN_SENTINEL" -eq "1" ]; then
-    touch $SENTINEL_LOG_FILE_PATH
+ensure_sentinel_conf_exists() {
+  # If sentinel.conf doesn't exist or $REPLACE_SENTINEL_CONF=1, copy it from /falkordb
+  if [ ! -f $SENTINEL_CONF_FILE ] || [ "$REPLACE_SENTINEL_CONF" -eq "1" ]; then
+    echo "Copying sentinel.conf from /falkordb"
+    cp /falkordb/sentinel.conf $SENTINEL_CONF_FILE
   fi
-fi
+}
 
-# Fix namespace in config files before starting the server
-# This must be called after sentinel.conf is created/copied but before server starts
-fix_namespace_in_config_files
-
-if [[ "$RUN_SENTINEL" -eq "1" ]] && ([[ "$NODE_INDEX" == "0" || "$NODE_INDEX" == "1" ]]); then
-  sed -i "s/\$ADMIN_PASSWORD/$ADMIN_PASSWORD/g" $SENTINEL_CONF_FILE
-  sed -i "s/\$FALKORDB_USER/$FALKORDB_USER/g" $SENTINEL_CONF_FILE
-  sed -i "s/\$FALKORDB_PASSWORD/$FALKORDB_PASSWORD/g" $SENTINEL_CONF_FILE
-  sed -i "s/\$LOG_LEVEL/$LOG_LEVEL/g" $SENTINEL_CONF_FILE
-
-  sed -i "s/\$SENTINEL_HOST/$NODE_HOST/g" $SENTINEL_CONF_FILE
-
-  echo "Starting Sentinel"
-
-  if [[ $TLS == "true" ]]; then
-    sed -i "s|/etc/ssl/certs/GlobalSign_Root_CA.pem|${ROOT_CA_PATH}|g" "$SENTINEL_CONF_FILE"
-    if ! grep -q "^tls-port $SENTINEL_PORT" "$SENTINEL_CONF_FILE"; then
-      echo "port 0" >>$SENTINEL_CONF_FILE
-      echo "tls-port $SENTINEL_PORT" >>$SENTINEL_CONF_FILE
-      echo "tls-cert-file $TLS_MOUNT_PATH/tls.crt" >>$SENTINEL_CONF_FILE
-      echo "tls-key-file $TLS_MOUNT_PATH/tls.key" >>$SENTINEL_CONF_FILE
-      echo "tls-client-cert-file $TLS_MOUNT_PATH/selfsigned-tls.crt" >>$SENTINEL_CONF_FILE
-      echo "tls-client-key-file $TLS_MOUNT_PATH/selfsigned-tls.key" >>$SENTINEL_CONF_FILE
-      echo "tls-ca-cert-file $ROOT_CA_PATH" >>$SENTINEL_CONF_FILE
-      echo "tls-replication yes" >>$SENTINEL_CONF_FILE
-      echo "tls-auth-clients optional" >>$SENTINEL_CONF_FILE
-    else
-      sed -i "s|tls-port .*|tls-port $SENTINEL_PORT|g" "$SENTINEL_CONF_FILE"
-      sed -i "s|tls-cert-file .*|tls-cert-file $TLS_MOUNT_PATH/tls.crt|g" "$SENTINEL_CONF_FILE"
-      sed -i "s|tls-key-file .*|tls-key-file $TLS_MOUNT_PATH/tls.key|g" "$SENTINEL_CONF_FILE"
-      if grep -q "^tls-client-cert-file " "$SENTINEL_CONF_FILE"; then
-        sed -i "s|tls-client-cert-file .*|tls-client-cert-file $TLS_MOUNT_PATH/selfsigned-tls.crt|g" "$SENTINEL_CONF_FILE"
-      else
-        echo "tls-client-cert-file $TLS_MOUNT_PATH/selfsigned-tls.crt" >>$SENTINEL_CONF_FILE
-      fi
-      if grep -q "^tls-client-key-file " "$SENTINEL_CONF_FILE"; then
-        sed -i "s|tls-client-key-file .*|tls-client-key-file $TLS_MOUNT_PATH/selfsigned-tls.key|g" "$SENTINEL_CONF_FILE"
-      else
-        echo "tls-client-key-file $TLS_MOUNT_PATH/selfsigned-tls.key" >>$SENTINEL_CONF_FILE
-      fi
-      sed -i "s|tls-ca-cert-file .*|tls-ca-cert-file $ROOT_CA_PATH|g" "$SENTINEL_CONF_FILE"
-      if grep -q "^tls-replication " "$SENTINEL_CONF_FILE"; then
-        sed -i "s|tls-replication .*|tls-replication yes|g" "$SENTINEL_CONF_FILE"
-      else
-        echo "tls-replication yes" >>$SENTINEL_CONF_FILE
-      fi
-      if grep -q "^tls-auth-clients " "$SENTINEL_CONF_FILE"; then
-        sed -i "s|tls-auth-clients .*|tls-auth-clients optional|g" "$SENTINEL_CONF_FILE"
-      else
-        echo "tls-auth-clients optional" >>$SENTINEL_CONF_FILE
-      fi
+ensure_log_file_exists() {
+  if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then
+    if [ "$RUN_SENTINEL" -eq "1" ]; then
+      touch $SENTINEL_LOG_FILE_PATH
     fi
-  else
-    echo "port $SENTINEL_PORT" >>$SENTINEL_CONF_FILE
   fi
+}
 
-  # Start Sentinel supervisord service
-  echo "
+strip_stale_sentinel_state() {
+  # Strip accumulated sentinel dynamic state from previous deployment
+  # Sentinel will rediscover replicas and other sentinels from the current deployment
+  if [[ -f "$SENTINEL_CONF_FILE" ]]; then
+    echo "Stripping stale sentinel state (known-replica, known-sentinel) from sentinel.conf"
+    sed -i '/^sentinel known-replica /d' "$SENTINEL_CONF_FILE"
+    sed -i '/^sentinel known-sentinel /d' "$SENTINEL_CONF_FILE"
+  fi
+}
+
+run_sentinel() {
+  if [[ "$RUN_SENTINEL" -eq "1" ]] && ([[ "$NODE_INDEX" == "0" || "$NODE_INDEX" == "1" ]]); then
+    sed -i "s/\$ADMIN_PASSWORD/$ADMIN_PASSWORD/g" $SENTINEL_CONF_FILE
+    sed -i "s/\$FALKORDB_USER/$FALKORDB_USER/g" $SENTINEL_CONF_FILE
+    sed -i "s/\$FALKORDB_PASSWORD/$FALKORDB_PASSWORD/g" $SENTINEL_CONF_FILE
+    sed -i "s/\$LOG_LEVEL/$LOG_LEVEL/g" $SENTINEL_CONF_FILE
+
+    sed -i "s/\$SENTINEL_HOST/$NODE_HOST/g" $SENTINEL_CONF_FILE
+
+    echo "Starting Sentinel"
+
+    if [[ $TLS == "true" ]]; then
+      sed -i "s|/etc/ssl/certs/GlobalSign_Root_CA.pem|${ROOT_CA_PATH}|g" "$SENTINEL_CONF_FILE"
+      if ! grep -q "^tls-port $SENTINEL_PORT" "$SENTINEL_CONF_FILE"; then
+        echo "port 0" >>$SENTINEL_CONF_FILE
+        echo "tls-port $SENTINEL_PORT" >>$SENTINEL_CONF_FILE
+        echo "tls-cert-file $TLS_MOUNT_PATH/tls.crt" >>$SENTINEL_CONF_FILE
+        echo "tls-key-file $TLS_MOUNT_PATH/tls.key" >>$SENTINEL_CONF_FILE
+        echo "tls-client-cert-file $TLS_MOUNT_PATH/selfsigned-tls.crt" >>$SENTINEL_CONF_FILE
+        echo "tls-client-key-file $TLS_MOUNT_PATH/selfsigned-tls.key" >>$SENTINEL_CONF_FILE
+        echo "tls-ca-cert-file $ROOT_CA_PATH" >>$SENTINEL_CONF_FILE
+        echo "tls-replication yes" >>$SENTINEL_CONF_FILE
+        echo "tls-auth-clients optional" >>$SENTINEL_CONF_FILE
+      else
+        sed -i "s|tls-port .*|tls-port $SENTINEL_PORT|g" "$SENTINEL_CONF_FILE"
+        sed -i "s|tls-cert-file .*|tls-cert-file $TLS_MOUNT_PATH/tls.crt|g" "$SENTINEL_CONF_FILE"
+        sed -i "s|tls-key-file .*|tls-key-file $TLS_MOUNT_PATH/tls.key|g" "$SENTINEL_CONF_FILE"
+        if grep -q "^tls-client-cert-file " "$SENTINEL_CONF_FILE"; then
+          sed -i "s|tls-client-cert-file .*|tls-client-cert-file $TLS_MOUNT_PATH/selfsigned-tls.crt|g" "$SENTINEL_CONF_FILE"
+        else
+          echo "tls-client-cert-file $TLS_MOUNT_PATH/selfsigned-tls.crt" >>$SENTINEL_CONF_FILE
+        fi
+        if grep -q "^tls-client-key-file " "$SENTINEL_CONF_FILE"; then
+          sed -i "s|tls-client-key-file .*|tls-client-key-file $TLS_MOUNT_PATH/selfsigned-tls.key|g" "$SENTINEL_CONF_FILE"
+        else
+          echo "tls-client-key-file $TLS_MOUNT_PATH/selfsigned-tls.key" >>$SENTINEL_CONF_FILE
+        fi
+        sed -i "s|tls-ca-cert-file .*|tls-ca-cert-file $ROOT_CA_PATH|g" "$SENTINEL_CONF_FILE"
+        if grep -q "^tls-replication " "$SENTINEL_CONF_FILE"; then
+          sed -i "s|tls-replication .*|tls-replication yes|g" "$SENTINEL_CONF_FILE"
+        else
+          echo "tls-replication yes" >>$SENTINEL_CONF_FILE
+        fi
+        if grep -q "^tls-auth-clients " "$SENTINEL_CONF_FILE"; then
+          sed -i "s|tls-auth-clients .*|tls-auth-clients optional|g" "$SENTINEL_CONF_FILE"
+        else
+          echo "tls-auth-clients optional" >>$SENTINEL_CONF_FILE
+        fi
+      fi
+    else
+      echo "port $SENTINEL_PORT" >>$SENTINEL_CONF_FILE
+    fi
+
+    # Start Sentinel supervisord service
+    echo "
   [inet_http_server]
   port = 127.0.0.1:9001
 
@@ -264,10 +301,10 @@ if [[ "$RUN_SENTINEL" -eq "1" ]] && ([[ "$NODE_INDEX" == "0" || "$NODE_INDEX" ==
   stderr_logfile=$SENTINEL_LOG_FILE_PATH
   " >$DATA_DIR/supervisord.conf
 
-  # Add split-brain-monitor only if NODE_INDEX is 0 and HOSTNAME starts with sentinel-
-  if [[ "$NODE_INDEX" == "0" && "$HOSTNAME" =~ ^sentinel.* ]]; then
-    echo "Adding split-brain-monitor to supervisord configuration"
-    echo "
+    # Add split-brain-monitor only if NODE_INDEX is 0 and HOSTNAME starts with sentinel-
+    if [[ "$NODE_INDEX" == "0" && "$HOSTNAME" =~ ^sentinel.* ]]; then
+      echo "Adding split-brain-monitor to supervisord configuration"
+      echo "
   [program:split-brain-monitor]
   command=/usr/local/bin/split-brain-monitor.sh
   autorestart=true
@@ -278,42 +315,41 @@ if [[ "$RUN_SENTINEL" -eq "1" ]] && ([[ "$NODE_INDEX" == "0" || "$NODE_INDEX" ==
   startretries=3
   startsecs=10
     " >>$DATA_DIR/supervisord.conf
-  else
-    echo "Skipping split-brain-monitor (NODE_INDEX=$NODE_INDEX, HOSTNAME=$HOSTNAME)"
-  fi
-
-  tail -F $SENTINEL_LOG_FILE_PATH &
-
-  supervisord -c $DATA_DIR/supervisord.conf &
-
-  sleep 10
-  
-  if [[ "$RUN_NODE" -eq "1" ]]; then
-    log "Master Name: $MASTER_NAME\Master Host: $NODE_HOST\Master Port: $NODE_PORT\nSentinel Quorum: $SENTINEL_QUORUM"
-    wait_until_node_host_resolves $SENTINEL_HOST $SENTINEL_PORT
-    get_master
-    wait_until_node_host_resolves $FALKORDB_MASTER_HOST $FALKORDB_MASTER_PORT_NUMBER
-    response=$(redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL monitor $MASTER_NAME $FALKORDB_MASTER_HOST $FALKORDB_MASTER_PORT_NUMBER $SENTINEL_QUORUM)
-    log "Response from SENTINEL MONITOR command: $response"
-    if [[ "$response" == "ERR Invalid IP address or hostname specified" ]]; then
-      echo """
-        The hostname $NODE_HOST for the node $HOSTNAME was resolved successfully the first time but failed to do so a second time,
-        this  caused the SENTINEL MONITOR command failed.
-      """
-      exit 1
+    else
+      echo "Skipping split-brain-monitor (NODE_INDEX=$NODE_INDEX, HOSTNAME=$HOSTNAME)"
     fi
 
-    redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME auth-pass $ADMIN_PASSWORD
-    redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME failover-timeout $SENTINEL_FAILOVER
-    redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME down-after-milliseconds $SENTINEL_DOWN_AFTER
-    redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME parallel-syncs 1
+    tail -F $SENTINEL_LOG_FILE_PATH &
+
+    supervisord -c $DATA_DIR/supervisord.conf &
+
+    sleep 10
+    
+    if [[ "$RUN_NODE" -eq "1" ]]; then
+      log "Master Name: $MASTER_NAME\Master Host: $NODE_HOST\Master Port: $NODE_PORT\nSentinel Quorum: $SENTINEL_QUORUM"
+      wait_until_node_host_resolves $SENTINEL_HOST $SENTINEL_PORT
+      get_master
+      wait_until_node_host_resolves $FALKORDB_MASTER_HOST $FALKORDB_MASTER_PORT_NUMBER
+      response=$(redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL monitor $MASTER_NAME $FALKORDB_MASTER_HOST $FALKORDB_MASTER_PORT_NUMBER $SENTINEL_QUORUM)
+      log "Response from SENTINEL MONITOR command: $response"
+      if [[ "$response" == "ERR Invalid IP address or hostname specified" ]]; then
+        echo """
+          The hostname $NODE_HOST for the node $HOSTNAME was resolved successfully the first time but failed to do so a second time,
+          this  caused the SENTINEL MONITOR command failed.
+        """
+        exit 1
+      fi
+
+      redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME auth-pass $ADMIN_PASSWORD
+      redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME failover-timeout $SENTINEL_FAILOVER
+      redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME down-after-milliseconds $SENTINEL_DOWN_AFTER
+      redis-cli -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME parallel-syncs 1
+    fi
   fi
-fi
+}
 
-
-# If TLS=true, create a job to rotate the certificate
-if [[ "$TLS" == "true" ]]; then
-  if [[ $RUN_SENTINEL -eq 1 ]]; then
+create_tls_rotation_job_script() {
+  if [[ "$TLS" == "true" && $RUN_SENTINEL -eq 1 ]]; then
     echo "Creating sentinel certificate rotation job."
     echo "
     #!/bin/bash
@@ -323,8 +359,26 @@ if [[ "$TLS" == "true" ]]; then
     " >$DATA_DIR/cert_rotate_sentinel.sh
     chmod +x $DATA_DIR/cert_rotate_sentinel.sh
   fi
-fi
+}
 
-while true; do
-  sleep 1
-done
+wait_forever() {
+  while true; do
+    sleep 1
+  done
+}
+
+main() {
+  init_environment
+  trap handle_sigterm SIGTERM
+  ensure_sentinel_conf_exists
+  ensure_log_file_exists
+  fix_namespace_in_config_files
+  strip_stale_sentinel_state
+  run_sentinel
+  create_tls_rotation_job_script
+  wait_forever
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

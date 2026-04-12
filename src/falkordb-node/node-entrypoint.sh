@@ -1,125 +1,151 @@
 #!/bin/bash
 
-FALKORDB_USER=${FALKORDB_USER:-falkordb}
-#FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-''}
-if [[ -f "/run/secrets/falkordbpassword" ]] && [[ -s "/run/secrets/falkordbpassword" ]]; then
-  FALKORDB_PASSWORD=$(cat "/run/secrets/falkordbpassword")
-elif [[ -n "$FALKORDB_PASSWORD" ]]; then
-  FALKORDB_PASSWORD=$FALKORDB_PASSWORD
-else
-  FALKORDB_PASSWORD=''
-fi
+read_secret_or_env() {
+  local secret_path=$1
+  local env_name=$2
 
-#ADMIN_PASSWORD=${ADMIN_PASSWORD:-''}
-if [[ -f "/run/secrets/adminpassword" ]] && [[ -s "/run/secrets/adminpassword" ]]; then
-  ADMIN_PASSWORD=$(cat "/run/secrets/adminpassword")
+  if [[ -f "$secret_path" ]] && [[ -s "$secret_path" ]]; then
+    cat "$secret_path"
+  else
+    printf '%s' "${!env_name:-}"
+  fi
+}
+
+resolve_host_ip() {
+  local host=$1
+  local description=${2:-$1}
+  local timeout_seconds=${3:-300}
+  local deadline=$((SECONDS + timeout_seconds))
+  local resolved_ip
+
+  if [[ $host =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "$host"
+    return 0
+  fi
+
+  while true; do
+    resolved_ip=$(getent hosts "$host" 2>/dev/null | awk '{print $1; exit}')
+    if [[ -n "$resolved_ip" ]]; then
+      echo "$resolved_ip"
+      return 0
+    fi
+
+    if (( SECONDS >= deadline )); then
+      echo "Timed out trying to resolve ip for $description: $host" >&2
+      return 1
+    fi
+
+    echo "Waiting for $description to resolve: $host" >&2
+    sleep 3
+  done
+}
+
+load_credentials() {
+  FALKORDB_USER=${FALKORDB_USER:-falkordb}
+  FALKORDB_PASSWORD=$(read_secret_or_env "/run/secrets/falkordbpassword" "FALKORDB_PASSWORD")
+  ADMIN_PASSWORD=$(read_secret_or_env "/run/secrets/adminpassword" "ADMIN_PASSWORD")
   export ADMIN_PASSWORD
-elif [[ -n "$ADMIN_PASSWORD" ]]; then
-  export ADMIN_PASSWORD=$ADMIN_PASSWORD
-else
-  export ADMIN_PASSWORD=''
-fi
+}
 
-FALKORDB_UPGRADE_PASSWORD=${FALKORDB_UPGRADE_PASSWORD:-''}
-RUN_SENTINEL=${RUN_SENTINEL:-0}
-RUN_NODE=${RUN_NODE:-1}
-RUN_METRICS=${RUN_METRICS:-1}
-RUN_HEALTH_CHECK=${RUN_HEALTH_CHECK:-1}
-RUN_HEALTH_CHECK_SENTINEL=${RUN_HEALTH_CHECK_SENTINEL:-1}
-TLS=${TLS:-false}
-NODE_INDEX=${NODE_INDEX:-0}
-NETWORKING_TYPE=${NETWORKING_TYPE:-"PUBLIC"}
-INSTANCE_TYPE=${INSTANCE_TYPE:-''}
-PERSISTENCE_RDB_CONFIG_INPUT=${PERSISTENCE_RDB_CONFIG_INPUT:-'low'}
-PERSISTENCE_RDB_CONFIG=${PERSISTENCE_RDB_CONFIG:-'86400 1 21600 100 3600 10000'}
-PERSISTENCE_AOF_CONFIG=${PERSISTENCE_AOF_CONFIG:-'everysec'}
-FALKORDB_CACHE_SIZE=${FALKORDB_CACHE_SIZE:-25}
-FALKORDB_NODE_CREATION_BUFFER=${FALKORDB_NODE_CREATION_BUFFER:-16384}
-FALKORDB_MAX_QUEUED_QUERIES=${FALKORDB_MAX_QUEUED_QUERIES:-50}
-FALKORDB_RESULT_SET_SIZE=${FALKORDB_RESULT_SET_SIZE:-10000}
-FALKORDB_QUERY_MEM_CAPACITY=${FALKORDB_QUERY_MEM_CAPACITY:-0}
-FALKORDB_TIMEOUT_MAX=${FALKORDB_TIMEOUT_MAX:-0}
-FALKORDB_TIMEOUT_DEFAULT=${FALKORDB_TIMEOUT_DEFAULT:-0}
-FALKORDB_VKEY_MAX_ENTITY_COUNT=${FALKORDB_VKEY_MAX_ENTITY_COUNT:-4611686000000000000}
-FALKORDB_EFFECTS_THRESHOLD=${FALKORDB_EFFECTS_THRESHOLD:-0}
-MEMORY_LIMIT=${MEMORY_LIMIT:-''}
-# If vars are <nil>, set it to 0
-if [[ "$FALKORDB_QUERY_MEM_CAPACITY" == "<nil>" ]]; then
-  FALKORDB_QUERY_MEM_CAPACITY=0
-fi
-if [[ "$FALKORDB_TIMEOUT_MAX" == "<nil>" ]]; then
-  FALKORDB_TIMEOUT_MAX=0
-fi
-if [[ "$FALKORDB_TIMEOUT_DEFAULT" == "<nil>" ]]; then
-  FALKORDB_TIMEOUT_DEFAULT=0
-fi
+initialize_defaults() {
+  FALKORDB_UPGRADE_PASSWORD=${FALKORDB_UPGRADE_PASSWORD:-''}
+  RUN_SENTINEL=${RUN_SENTINEL:-0}
+  RUN_NODE=${RUN_NODE:-1}
+  RUN_METRICS=${RUN_METRICS:-1}
+  RUN_HEALTH_CHECK=${RUN_HEALTH_CHECK:-1}
+  RUN_HEALTH_CHECK_SENTINEL=${RUN_HEALTH_CHECK_SENTINEL:-1}
+  TLS=${TLS:-false}
+  NODE_INDEX=${NODE_INDEX:-0}
+  NETWORKING_TYPE=${NETWORKING_TYPE:-"PUBLIC"}
+  INSTANCE_TYPE=${INSTANCE_TYPE:-''}
+  PERSISTENCE_RDB_CONFIG_INPUT=${PERSISTENCE_RDB_CONFIG_INPUT:-'low'}
+  PERSISTENCE_RDB_CONFIG=${PERSISTENCE_RDB_CONFIG:-'86400 1 21600 100 3600 10000'}
+  PERSISTENCE_AOF_CONFIG=${PERSISTENCE_AOF_CONFIG:-'everysec'}
+  FALKORDB_CACHE_SIZE=${FALKORDB_CACHE_SIZE:-25}
+  FALKORDB_NODE_CREATION_BUFFER=${FALKORDB_NODE_CREATION_BUFFER:-16384}
+  FALKORDB_MAX_QUEUED_QUERIES=${FALKORDB_MAX_QUEUED_QUERIES:-50}
+  FALKORDB_RESULT_SET_SIZE=${FALKORDB_RESULT_SET_SIZE:-10000}
+  FALKORDB_QUERY_MEM_CAPACITY=${FALKORDB_QUERY_MEM_CAPACITY:-0}
+  FALKORDB_TIMEOUT_MAX=${FALKORDB_TIMEOUT_MAX:-0}
+  FALKORDB_TIMEOUT_DEFAULT=${FALKORDB_TIMEOUT_DEFAULT:-0}
+  FALKORDB_VKEY_MAX_ENTITY_COUNT=${FALKORDB_VKEY_MAX_ENTITY_COUNT:-4611686000000000000}
+  FALKORDB_EFFECTS_THRESHOLD=${FALKORDB_EFFECTS_THRESHOLD:-0}
+  MEMORY_LIMIT=${MEMORY_LIMIT:-''}
+  SENTINEL_PORT=${SENTINEL_PORT:-26379}
+  SENTINEL_DOWN_AFTER=${SENTINEL_DOWN_AFTER:-30000}
+  SENTINEL_FAILOVER=${SENTINEL_FAILOVER:-180000}
+  SENTINEL_HOST=sentinel-$(echo $RESOURCE_ALIAS | cut -d "-" -f 2)-0.$LOCAL_DNS_SUFFIX
+  NODE_HOST=${NODE_HOST:-localhost}
+  NODE_PORT=${NODE_PORT:-6379}
+  MASTER_NAME=${MASTER_NAME:-master}
+  SENTINEL_QUORUM=${SENTINEL_QUORUM:-2}
+  FALKORDB_MASTER_HOST=''
+  FALKORDB_MASTER_PORT_NUMBER=${MASTER_PORT:-6379}
+  IS_REPLICA=${IS_REPLICA:-0}
+  ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
+  TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
+  SELFSIGNED_CA_PATH="$TLS_MOUNT_PATH/selfsigned-ca.crt"
+  DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
+}
 
-SENTINEL_PORT=${SENTINEL_PORT:-26379}
-SENTINEL_DOWN_AFTER=${SENTINEL_DOWN_AFTER:-30000}
-SENTINEL_FAILOVER=${SENTINEL_FAILOVER:-180000}
-
-# SENTINEL_HOST=${SENTINEL_HOST:-localhost}
-SENTINEL_HOST=sentinel-$(echo $RESOURCE_ALIAS | cut -d "-" -f 2)-0.$LOCAL_DNS_SUFFIX
-
-NODE_HOST=${NODE_HOST:-localhost}
-NODE_PORT=${NODE_PORT:-6379}
-MASTER_NAME=${MASTER_NAME:-master}
-SENTINEL_QUORUM=${SENTINEL_QUORUM:-2}
-
-FALKORDB_MASTER_HOST=''
-FALKORDB_MASTER_PORT_NUMBER=${MASTER_PORT:-6379}
-IS_REPLICA=${IS_REPLICA:-0}
-ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
-TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
-SELFSIGNED_CA_PATH="$TLS_MOUNT_PATH/selfsigned-ca.crt"
-DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
-
-# Add backward compatibility for /data folder
-if [[ "$DATA_DIR" != '/data' ]]; then
-  mkdir -p $DATA_DIR
-  if [[ -d '/data' ]]; then
-    # create simlink
-    ln -s /data $DATA_DIR
+normalize_optional_config_values() {
+  if [[ "$FALKORDB_QUERY_MEM_CAPACITY" == "<nil>" ]]; then
+    FALKORDB_QUERY_MEM_CAPACITY=0
   fi
-fi
-
-if [[ $(basename "$DATA_DIR") != 'data' ]];then DATA_DIR=$DATA_DIR/data;fi
-
-# If TLS is enabled and selfsigned-ca.crt exists, create a combined CA cert file
-if [[ "$TLS" == "true" ]] && [[ -f "$SELFSIGNED_CA_PATH" ]]; then
-  if ! cat "$ROOT_CA_PATH" "$SELFSIGNED_CA_PATH" > "$DATA_DIR/selfsigned-tls-combined.pem"; then
-    echo "Failed to create combined CA cert file"
-    exit 1
+  if [[ "$FALKORDB_TIMEOUT_MAX" == "<nil>" ]]; then
+    FALKORDB_TIMEOUT_MAX=0
   fi
-  ROOT_CA_PATH="$DATA_DIR/selfsigned-tls-combined.pem"
-fi
+  if [[ "$FALKORDB_TIMEOUT_DEFAULT" == "<nil>" ]]; then
+    FALKORDB_TIMEOUT_DEFAULT=0
+  fi
+}
 
-DEBUG=${DEBUG:-0}
-REPLACE_NODE_CONF=${REPLACE_NODE_CONF:-0}
-TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
-AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
-SAVE_LOGS_TO_FILE=${SAVE_LOGS_TO_FILE:-1}
-LOG_LEVEL=${LOG_LEVEL:-notice}
+prepare_data_dir() {
+  if [[ "$DATA_DIR" != '/data' ]]; then
+    mkdir -p "$DATA_DIR"
+    if [[ -d '/data' ]] && [[ ! -e "$DATA_DIR/data" ]]; then
+      ln -s /data "$DATA_DIR"
+    fi
+  fi
 
-DATE_NOW=$(date +"%Y%m%d%H%M%S")
+  if [[ $(basename "$DATA_DIR") != 'data' ]]; then DATA_DIR=$DATA_DIR/data; fi
+}
 
+prepare_tls_ca_bundle() {
+  if [[ "$TLS" == "true" ]] && [[ -f "$SELFSIGNED_CA_PATH" ]]; then
+    if ! cat "$ROOT_CA_PATH" "$SELFSIGNED_CA_PATH" > "$DATA_DIR/selfsigned-tls-combined.pem"; then
+      echo "Failed to create combined CA cert file"
+      exit 1
+    fi
+    ROOT_CA_PATH="$DATA_DIR/selfsigned-tls-combined.pem"
+  fi
+}
 
-FALKORDB_LOG_FILE_PATH=$(if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then echo $DATA_DIR/falkordb_$DATE_NOW.log; else echo "/dev/null"; fi)
-NODE_CONF_FILE=$DATA_DIR/node.conf
-AOF_FILE_SIZE_TO_MONITOR=${AOF_FILE_SIZE_TO_MONITOR:-5} # 5MB
+initialize_runtime_paths() {
+  DEBUG=${DEBUG:-0}
+  REPLACE_NODE_CONF=${REPLACE_NODE_CONF:-0}
+  TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
+  AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
+  SAVE_LOGS_TO_FILE=${SAVE_LOGS_TO_FILE:-1}
+  LOG_LEVEL=${LOG_LEVEL:-notice}
+  DATE_NOW=$(date +"%Y%m%d%H%M%S")
+  FALKORDB_LOG_FILE_PATH=$(if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then echo $DATA_DIR/falkordb_$DATE_NOW.log; else echo "/dev/null"; fi)
+  NODE_CONF_FILE=$DATA_DIR/node.conf
+  AOF_FILE_SIZE_TO_MONITOR=${AOF_FILE_SIZE_TO_MONITOR:-5}
 
-if [[ $OMNISTRATE_ENVIRONMENT_TYPE != "PROD" ]]; then
-  DEBUG=1
-fi
+  if [[ $OMNISTRATE_ENVIRONMENT_TYPE != "PROD" ]]; then
+    DEBUG=1
+  fi
+}
 
-
-echo "Creating run_bgrewriteaof script"
-echo "
+ensure_run_bgrewriteaof_script() {
+  echo "Creating run_bgrewriteaof script"
+  echo "
     #!/bin/bash
     set -e
     AOF_FILE_SIZE_TO_MONITOR=\${AOF_FILE_SIZE_TO_MONITOR:-5}
     ROOT_CA_PATH=\${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
-    TLS_CONNECTION_STRING=$(if [[ \$TLS == "true" ]]; then echo "--tls --cacert \$ROOT_CA_PATH"; else echo ""; fi)
+    TLS_CONNECTION_STRING=$(if [[ \$TLS == \"true\" ]]; then echo \"--tls --cacert \$ROOT_CA_PATH\"; else echo \"\"; fi)
     size=0
     for file in $DATA_DIR/appendonlydir/appendonly.aof.*.incr.aof; do
       if [[ -f \"\$file\" ]]; then
@@ -133,10 +159,20 @@ echo "
       echo \"File smaller than \$AOF_FILE_SIZE_TO_MONITOR MB, not running BGREWRITEAOF\"
     fi
     " > "$DATA_DIR/run_bgrewriteaof"
-chmod +x "$DATA_DIR/run_bgrewriteaof"
-ln -s "$DATA_DIR/run_bgrewriteaof" $FALKORDB_HOME/run_bgrewriteaof
-echo "run_bgrewriteaof script created"
+  chmod +x "$DATA_DIR/run_bgrewriteaof"
+  ln -s "$DATA_DIR/run_bgrewriteaof" $FALKORDB_HOME/run_bgrewriteaof
+  echo "run_bgrewriteaof script created"
+}
 
+init_environment() {
+  load_credentials
+  initialize_defaults
+  normalize_optional_config_values
+  prepare_data_dir
+  prepare_tls_ca_bundle
+  initialize_runtime_paths
+  ensure_run_bgrewriteaof_script
+}
 
 dump_conf_files() {
   echo "Dumping configuration files"
@@ -192,7 +228,6 @@ get_sentinels_list() {
   return $sentinels_list
 }
 
-# Handle signals
 wait_for_bgrewrite_to_finish() {
   tout=${tout:-30}
   # Give BGREWRITEAOF time to start
@@ -214,7 +249,6 @@ wait_for_bgrewrite_to_finish() {
 handle_sigterm() {
   echo "Caught SIGTERM"
   echo "Stopping FalkorDB"
-  # sentinels_list=$(get_sentinels_list)
 
   if [[ $RUN_NODE -eq 1 && ! -z $falkordb_pid ]]; then
     #DO NOT USE is_replica FUNCTION
@@ -230,8 +264,6 @@ handle_sigterm() {
   exit 0
 }
 
-trap handle_sigterm SIGTERM
-
 log() {
   if [[ $DEBUG -eq 1 ]]; then
     echo $1
@@ -242,10 +274,10 @@ get_self_host_ip() {
   if [[ $NODE_HOST == "localhost" ]]; then
     NODE_HOST_IP=$(curl ifconfig.me)
   else
-    NODE_HOST_IP=$(getent hosts $NODE_HOST | awk '{ print $1 }')
-    if [[ -z $NODE_HOST_IP ]]; then
-      NODE_HOST_IP=$(curl ifconfig.me)
-    fi
+    NODE_HOST_IP=$(resolve_host_ip "$NODE_HOST" "self node host") || {
+      echo "Failed to resolve self node host: $NODE_HOST"
+      exit 1
+    }
   fi
 }
 
@@ -475,20 +507,24 @@ check_network_type_changes() {
   fi
 }
 
-if [ -f $NODE_CONF_FILE ]; then
-  # Get current admin password
-  CURRENT_ADMIN_PASSWORD=$(awk '/^requirepass / {print $2}' $NODE_CONF_FILE | sed 's/\"//g')
-  # If current admin password is different from the new one, reset it
-  if [[ "$CURRENT_ADMIN_PASSWORD" != "$ADMIN_PASSWORD" ]]; then
-    RESET_ADMIN_PASSWORD=1
+check_admin_password_change() {
+  if [ -f $NODE_CONF_FILE ]; then
+    # Get current admin password
+    CURRENT_ADMIN_PASSWORD=$(awk '/^requirepass / {print $2}' $NODE_CONF_FILE | sed 's/\"//g')
+    # If current admin password is different from the new one, reset it
+    if [[ "$CURRENT_ADMIN_PASSWORD" != "$ADMIN_PASSWORD" ]]; then
+      RESET_ADMIN_PASSWORD=1
+    fi
   fi
-fi
+}
 
-# If node.conf doesn't exist or $REPLACE_NODE_CONF=1, copy it from /falkordb
-if [ ! -f $NODE_CONF_FILE ] || [ "$REPLACE_NODE_CONF" -eq "1" ]; then
-  echo "Copying node.conf from /falkordb"
-  cp /falkordb/node.conf $NODE_CONF_FILE
-fi
+ensure_node_conf_exists() {
+  # If node.conf doesn't exist or $REPLACE_NODE_CONF=1, copy it from /falkordb
+  if [ ! -f $NODE_CONF_FILE ] || [ "$REPLACE_NODE_CONF" -eq "1" ]; then
+    echo "Copying node.conf from /falkordb"
+    cp /falkordb/node.conf $NODE_CONF_FILE
+  fi
+}
 
 fix_namespace_in_config_files() {
   # Use INSTANCE_ID environment variable to get the current namespace
@@ -514,15 +550,9 @@ fix_namespace_in_config_files() {
     
     # Check and fix node.conf
     if [[ -f "$NODE_CONF_FILE" ]]; then
-      # First check if the file contains the current DNS suffix - if so, likely no replacement needed
-      # But we still run the replacement to handle mixed cases where some entries might be outdated
       echo "Checking node.conf for DNS suffix mismatches"
-      # Replace old DNS suffixes with current one for specific configuration parameters
+      # Replace old DNS suffixes with current one
       # This regex matches the Omnistrate DNS suffix structure: hc-<ID>.<REGION>.<CLOUD>.<HASH>.<TLD>
-      # Example: hc-abc123.us-central1.gcp.f2e0a955bb84.cloud
-      # Pattern: captures hostname (may contain underscores, must have at least one letter to avoid matching IPs), 
-      # then matches the DNS suffix structure and replaces it with the current DNS suffix
-      # The replacement is idempotent - if DNS suffix is already correct, it stays the same
       sed -i -E "s/([a-zA-Z0-9_-]*[a-zA-Z][a-zA-Z0-9_-]*)\.hc-[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.[a-f0-9]+\.[a-zA-Z]+/\1.${escaped_dns_suffix}/g" "$NODE_CONF_FILE"
     fi
   else
@@ -530,22 +560,15 @@ fix_namespace_in_config_files() {
   fi
 }
 
-# Create log files if they don't exist
-if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then
-  if [ "$RUN_NODE" -eq "1" ]; then
-    touch $FALKORDB_LOG_FILE_PATH
+ensure_log_file_exists() {
+  if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then
+    if [ "$RUN_NODE" -eq "1" ]; then
+      touch $FALKORDB_LOG_FILE_PATH
+    fi
   fi
-fi
+}
 
-set_persistence_config
-get_self_host_ip
-
-# Fix namespace in config files before starting the server
-# This must be called after node.conf is created/copied but before server starts
-fix_namespace_in_config_files
-
-if [ "$RUN_NODE" -eq "1" ]; then
-
+run_node() {
   # Update .SO path for old instances
   sed -i "s|/FalkorDB/bin/src/bin/falkordb.so|/var/lib/falkordb/bin/falkordb.so|g" $NODE_CONF_FILE
   sed -i "s/\$NODE_HOST/$NODE_HOST/g" $NODE_CONF_FILE
@@ -565,7 +588,9 @@ if [ "$RUN_NODE" -eq "1" ]; then
 
   is_replica
   if [[ $IS_REPLICA -eq 1 ]]; then
-    if ! grep -q "^replicaof " "$NODE_CONF_FILE"; then
+    if grep -q "^replicaof " "$NODE_CONF_FILE"; then
+      sed -i "s|^replicaof .*|replicaof $FALKORDB_MASTER_HOST $FALKORDB_MASTER_PORT_NUMBER|" "$NODE_CONF_FILE"
+    else
       echo "replicaof $FALKORDB_MASTER_HOST $FALKORDB_MASTER_PORT_NUMBER" >>"$NODE_CONF_FILE"
     fi
     echo "Starting Replica"
@@ -620,11 +645,9 @@ if [ "$RUN_NODE" -eq "1" ]; then
   redis-server $NODE_CONF_FILE --logfile $FALKORDB_LOG_FILE_PATH &
   falkordb_pid=$!
   tail -F $FALKORDB_LOG_FILE_PATH &
+}
 
-  sleep 10
-
-  create_user
-
+add_master_to_sentinel() {
   # If node should be master, add it to sentinel — but only if sentinel does not already
   # have a *different* node as master (which would mean a failover happened while this node
   # was restarting and we must not overwrite it).
@@ -645,7 +668,9 @@ if [ "$RUN_NODE" -eq "1" ]; then
     redis-cli -h $SENTINEL_HOST -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME down-after-milliseconds $SENTINEL_DOWN_AFTER
     redis-cli -h $SENTINEL_HOST -p $SENTINEL_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING SENTINEL set $MASTER_NAME parallel-syncs 1
   fi
+}
 
+post_start_configuration() {
   # Set maxmemory based on instance type
   get_memory_limit
   if [[ ! -z $MEMORY_LIMIT ]]; then
@@ -664,14 +689,10 @@ if [ "$RUN_NODE" -eq "1" ]; then
   fi
 
   config_rewrite
-fi
+}
 
-set_max_info_queries
-check_network_type_changes
-
-# If TLS=true, create a script to rotate the certificate
-if [[ "$TLS" == "true" ]]; then
-  if [[ $RUN_NODE -eq 1 ]]; then
+create_tls_rotation_job_script() {
+  if [[ "$TLS" == "true" && $RUN_NODE -eq 1 ]]; then
     echo "Creating node certificate rotation job script"
     echo "
     #!/bin/bash
@@ -686,8 +707,38 @@ if [[ "$TLS" == "true" ]]; then
     " >$DATA_DIR/cert_rotate_node.sh
     chmod +x $DATA_DIR/cert_rotate_node.sh
   fi
-fi
+}
 
-while true; do
-  sleep 1
-done
+wait_forever() {
+  while true; do
+    sleep 1
+  done
+}
+
+main() {
+  init_environment
+  trap handle_sigterm SIGTERM
+  check_admin_password_change
+  ensure_node_conf_exists
+  ensure_log_file_exists
+  set_persistence_config
+  get_self_host_ip
+  fix_namespace_in_config_files
+
+  if [ "$RUN_NODE" -eq "1" ]; then
+    run_node
+    sleep 10
+    create_user
+    add_master_to_sentinel
+    post_start_configuration
+  fi
+
+  set_max_info_queries
+  check_network_type_changes
+  create_tls_rotation_job_script
+  wait_forever
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

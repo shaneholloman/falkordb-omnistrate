@@ -1,0 +1,296 @@
+# shellcheck shell=bash
+
+Describe "node-entrypoint.sh helpers"
+  Include ./node-entrypoint.sh
+
+  setup() {
+    temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/node-entrypoint-spec.XXXXXX")
+    DATA_DIR="$temp_dir/runtime/data"
+    mkdir -p "$DATA_DIR"
+    NODE_CONF_FILE="$DATA_DIR/node.conf"
+    : > "$NODE_CONF_FILE"
+    NODE_HOST="node-rp-0.instance-new.hc-new.us-central1.gcp.beef.cloud"
+    NODE_PORT=6379
+    TLS=false
+    INSTANCE_ID=""
+    DNS_SUFFIX=""
+    ADMIN_PASSWORD="testpass"
+    PERSISTENCE_RDB_CONFIG_INPUT="low"
+    PERSISTENCE_RDB_CONFIG=""
+    MEMORY_LIMIT=""
+    FALKORDB_QUERY_MEM_CAPACITY=0
+    FALKORDB_TIMEOUT_MAX=0
+    FALKORDB_TIMEOUT_DEFAULT=0
+    sleep() {
+      SECONDS=$((SECONDS + 301))
+    }
+
+    sed() {
+      if [[ "$1" == "-i" && "$2" == "-E" ]]; then
+        perl -0pi -e "$3" "$4"
+      else
+        /usr/bin/sed "$@"
+      fi
+    }
+
+    unset -f getent
+  }
+  BeforeEach 'setup'
+
+  teardown() {
+    rm -rf "$temp_dir"
+    unset DATA_DIR NODE_CONF_FILE NODE_HOST NODE_PORT TLS INSTANCE_ID DNS_SUFFIX
+    unset ADMIN_PASSWORD PERSISTENCE_RDB_CONFIG_INPUT PERSISTENCE_RDB_CONFIG MEMORY_LIMIT
+    unset FALKORDB_QUERY_MEM_CAPACITY FALKORDB_TIMEOUT_MAX FALKORDB_TIMEOUT_DEFAULT
+    unset -f getent sed sleep
+  }
+  AfterEach 'teardown'
+
+  Describe "read_secret_or_env()"
+    It "reads value from a secret file when present"
+      echo -n "secret_val" > "$temp_dir/secret_file"
+      When call read_secret_or_env "$temp_dir/secret_file" "UNUSED_ENV"
+      The status should be success
+      The output should eq "secret_val"
+    End
+
+    It "falls back to environment variable when secret file missing"
+      MY_TEST_VAR="env_val"
+      When call read_secret_or_env "/nonexistent/path" "MY_TEST_VAR"
+      The status should be success
+      The output should eq "env_val"
+      unset MY_TEST_VAR
+    End
+
+    It "returns empty when neither secret file nor env var exists"
+      When call read_secret_or_env "/nonexistent/path" "TOTALLY_MISSING_VAR"
+      The status should be success
+      The output should eq ""
+    End
+
+    It "ignores an empty secret file and falls back to env var"
+      : > "$temp_dir/empty_secret"
+      FALLBACK_VAR="fallback"
+      When call read_secret_or_env "$temp_dir/empty_secret" "FALLBACK_VAR"
+      The status should be success
+      The output should eq "fallback"
+      unset FALLBACK_VAR
+    End
+  End
+
+  Describe "resolve_host_ip()"
+    It "returns a literal IP without DNS lookup"
+      When call resolve_host_ip "10.0.0.42"
+      The status should be success
+      The output should eq "10.0.0.42"
+    End
+
+    It "resolves a hostname via getent"
+      getent() {
+        if [[ "$2" == "myhost.example.com" ]]; then
+          echo "10.0.0.99 myhost.example.com"
+        else
+          return 1
+        fi
+      }
+
+      When call resolve_host_ip "myhost.example.com"
+      The status should be success
+      The output should eq "10.0.0.99"
+    End
+
+    It "times out when a hostname never resolves"
+      getent() { return 1; }
+      sleep() { SECONDS=$((SECONDS + 301)); }
+
+      When run resolve_host_ip "unresolvable.host" "peer node" 0
+      The status should be failure
+      The stderr should include "Timed out trying to resolve ip for peer node: unresolvable.host"
+    End
+  End
+
+  Describe "normalize_optional_config_values()"
+    It "converts <nil> values to 0"
+      FALKORDB_QUERY_MEM_CAPACITY="<nil>"
+      FALKORDB_TIMEOUT_MAX="<nil>"
+      FALKORDB_TIMEOUT_DEFAULT="<nil>"
+
+      When call normalize_optional_config_values
+      The status should be success
+      The variable FALKORDB_QUERY_MEM_CAPACITY should eq "0"
+      The variable FALKORDB_TIMEOUT_MAX should eq "0"
+      The variable FALKORDB_TIMEOUT_DEFAULT should eq "0"
+    End
+
+    It "leaves numeric values unchanged"
+      FALKORDB_QUERY_MEM_CAPACITY=100
+      FALKORDB_TIMEOUT_MAX=200
+      FALKORDB_TIMEOUT_DEFAULT=300
+
+      When call normalize_optional_config_values
+      The status should be success
+      The variable FALKORDB_QUERY_MEM_CAPACITY should eq "100"
+      The variable FALKORDB_TIMEOUT_MAX should eq "200"
+      The variable FALKORDB_TIMEOUT_DEFAULT should eq "300"
+    End
+  End
+
+  Describe "set_persistence_config()"
+    It "sets low persistence config"
+      PERSISTENCE_RDB_CONFIG_INPUT="low"
+      When call set_persistence_config
+      The status should be success
+      The variable PERSISTENCE_RDB_CONFIG should eq "86400 1 21600 100 3600 10000"
+    End
+
+    It "sets medium persistence config"
+      PERSISTENCE_RDB_CONFIG_INPUT="medium"
+      When call set_persistence_config
+      The status should be success
+      The variable PERSISTENCE_RDB_CONFIG should eq "21600 1 3600 100 300 10000"
+    End
+
+    It "sets high persistence config"
+      PERSISTENCE_RDB_CONFIG_INPUT="high"
+      When call set_persistence_config
+      The status should be success
+      The variable PERSISTENCE_RDB_CONFIG should eq "3600 1 300 100 60 10000"
+    End
+
+    It "defaults to low for unknown values"
+      PERSISTENCE_RDB_CONFIG_INPUT="unknown"
+      When call set_persistence_config
+      The status should be success
+      The variable PERSISTENCE_RDB_CONFIG should eq "86400 1 21600 100 3600 10000"
+    End
+  End
+
+  Describe "get_memory_limit()"
+    It "converts 1200M to 1G"
+      MEMORY_LIMIT="1200M"
+      When call get_memory_limit
+      The status should be success
+      The variable MEMORY_LIMIT should eq "1G"
+      The output should include "Memory Limit: 1G"
+    End
+
+    It "converts 2200M to 2G"
+      MEMORY_LIMIT="2200M"
+      When call get_memory_limit
+      The status should be success
+      The variable MEMORY_LIMIT should eq "2G"
+      The output should include "Memory Limit: 2G"
+    End
+
+    It "keeps other M values unchanged"
+      MEMORY_LIMIT="500M"
+      When call get_memory_limit
+      The status should be success
+      The variable MEMORY_LIMIT should eq "500M"
+      The output should include "Memory Limit: 500M"
+    End
+
+    It "keeps G values unchanged"
+      MEMORY_LIMIT="4G"
+      When call get_memory_limit
+      The status should be success
+      The variable MEMORY_LIMIT should eq "4G"
+      The output should include "Memory Limit: 4G"
+    End
+  End
+
+  Describe "fix_namespace_in_config_files()"
+    It "rewrites namespace in node.conf"
+      INSTANCE_ID="instance-new"
+
+      cat <<'EOF' > "$NODE_CONF_FILE"
+cluster-announce-hostname node-rp-0.instance-old.hc-old.us-central1.gcp.deadbeef.cloud
+replica-announce-ip node-rp-0.instance-old.hc-old.us-central1.gcp.deadbeef.cloud
+EOF
+
+      When call fix_namespace_in_config_files
+      The status should be success
+      The output should include "Current namespace: instance-new"
+      The output should include "Checking node.conf for namespace mismatches"
+      The contents of file "$NODE_CONF_FILE" should include "node-rp-0.instance-new.hc-old.us-central1.gcp.deadbeef.cloud"
+      The contents of file "$NODE_CONF_FILE" should not include "instance-old"
+    End
+
+    It "rewrites DNS suffix in node.conf"
+      DNS_SUFFIX="hc-new.us-central1.gcp.beef.cloud"
+
+      cat <<'EOF' > "$NODE_CONF_FILE"
+cluster-announce-hostname node-rp-0.instance-abc.hc-old.us-central1.gcp.deadbeef.cloud
+replica-announce-ip node-rp-0.instance-abc.hc-old.us-central1.gcp.deadbeef.cloud
+EOF
+
+      When call fix_namespace_in_config_files
+      The status should be success
+      The output should include "Current DNS suffix: hc-new.us-central1.gcp.beef.cloud"
+      The contents of file "$NODE_CONF_FILE" should include "node-rp-0.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+      The contents of file "$NODE_CONF_FILE" should not include "deadbeef"
+    End
+
+    It "rewrites both namespace and DNS suffix together"
+      INSTANCE_ID="instance-new"
+      DNS_SUFFIX="hc-new.us-central1.gcp.beef.cloud"
+
+      cat <<'EOF' > "$NODE_CONF_FILE"
+cluster-announce-hostname node-rp-0.instance-old.hc-old.us-central1.gcp.deadbeef.cloud
+replicaof node-rp-0.instance-old.hc-old.us-central1.gcp.deadbeef.cloud 6379
+EOF
+
+      When call fix_namespace_in_config_files
+      The status should be success
+      The output should include "Current namespace: instance-new"
+      The contents of file "$NODE_CONF_FILE" should include "node-rp-0.instance-new.hc-new.us-central1.gcp.beef.cloud"
+    End
+
+    It "skips when INSTANCE_ID and DNS_SUFFIX are not set"
+      INSTANCE_ID=""
+      DNS_SUFFIX=""
+
+      When call fix_namespace_in_config_files
+      The status should be success
+      The output should include "INSTANCE_ID not set, skipping namespace fix"
+      The output should include "DNS_SUFFIX not set, skipping DNS suffix fix"
+    End
+
+    It "is idempotent when DNS suffix is already correct"
+      DNS_SUFFIX="hc-new.us-central1.gcp.beef.cloud"
+
+      cat <<'EOF' > "$NODE_CONF_FILE"
+cluster-announce-hostname node-rp-0.instance-abc.hc-new.us-central1.gcp.beef.cloud
+EOF
+
+      When call fix_namespace_in_config_files
+      The status should be success
+      The output should include "Current DNS suffix:"
+      The contents of file "$NODE_CONF_FILE" should include "node-rp-0.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+    End
+  End
+
+  Describe "get_self_host_ip()"
+    It "resolves hostname via resolve_host_ip"
+      NODE_HOST="node-rp-0.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+      getent() {
+        echo "10.0.0.50 $2"
+      }
+
+      When call get_self_host_ip
+      The status should be success
+      The variable NODE_HOST_IP should eq "10.0.0.50"
+    End
+
+    It "fails when hostname does not resolve"
+      NODE_HOST="node-rp-0.unresolvable.host"
+      getent() { return 1; }
+      sleep() { SECONDS=$((SECONDS + 301)); }
+
+      When run get_self_host_ip
+      The status should be failure
+      The output should include "Failed to resolve self node host"
+      The stderr should include "Timed out trying to resolve ip for self node host"
+    End
+  End
+End

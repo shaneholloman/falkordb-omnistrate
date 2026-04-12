@@ -89,7 +89,27 @@ jobs:
           arm: ${{ matrix.machines.arm }}
           image: ${{ matrix.machines.image }}
 
+  shellspec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install ShellSpec
+        run: |
+          curl -fsSL https://git.io/shellspec | sh -s -- --yes
+
+      - name: Run ShellSpec tests
+        run: |
+          export PATH="$HOME/.local/lib/shellspec:$PATH"
+          shellspec src/falkordb-cluster/cluster-entrypoint_spec.sh \
+                    src/falkordb-node/node-entrypoint_spec.sh \
+                    src/falkordb-sentinel/sentinel-entrypoint_spec.sh
+
   build-and-push:
+    needs: shellspec
     runs-on: ubuntu-latest
     permissions:
       contents: read

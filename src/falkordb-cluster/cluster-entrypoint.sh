@@ -1,113 +1,117 @@
 #!/bin/bash
 
-FALKORDB_USER=${FALKORDB_USER:-falkordb}
-#FALKORDB_PASSWORD=${FALKORDB_PASSWORD:-''}
-if [[ -f "/run/secrets/falkordbpassword" ]] && [[ -s "/run/secrets/falkordbpassword" ]]; then
-  FALKORDB_PASSWORD=$(cat "/run/secrets/falkordbpassword")
-elif [[ -n "$FALKORDB_PASSWORD" ]]; then
-  FALKORDB_PASSWORD=$FALKORDB_PASSWORD
-else
-  FALKORDB_PASSWORD=''
-fi
+read_secret_or_env() {
+  local secret_path=$1
+  local env_name=$2
 
-#ADMIN_PASSWORD=${ADMIN_PASSWORD:-''}
-if [[ -f "/run/secrets/adminpassword" ]] && [[ -s "/run/secrets/adminpassword" ]]; then
-  ADMIN_PASSWORD=$(cat "/run/secrets/adminpassword")
+  if [[ -f "$secret_path" ]] && [[ -s "$secret_path" ]]; then
+    cat "$secret_path"
+  else
+    printf '%s' "${!env_name:-}"
+  fi
+}
+
+load_credentials() {
+  FALKORDB_USER=${FALKORDB_USER:-falkordb}
+  FALKORDB_PASSWORD=$(read_secret_or_env "/run/secrets/falkordbpassword" "FALKORDB_PASSWORD")
+  ADMIN_PASSWORD=$(read_secret_or_env "/run/secrets/adminpassword" "ADMIN_PASSWORD")
   export ADMIN_PASSWORD
-elif [[ -n "$ADMIN_PASSWORD" ]]; then
-  export ADMIN_PASSWORD=$ADMIN_PASSWORD
-else
-  export ADMIN_PASSWORD=''
-fi
+}
 
-RUN_METRICS=${RUN_METRICS:-1}
-RUN_HEALTH_CHECK=${RUN_HEALTH_CHECK:-1}
-TLS=${TLS:-false}
-NODE_INDEX=${NODE_INDEX:-0}
-NETWORKING_TYPE=${NETWORKING_TYPE:-"PUBLIC"}
-INSTANCE_TYPE=${INSTANCE_TYPE:-''}
-PERSISTENCE_RDB_CONFIG_INPUT=${PERSISTENCE_RDB_CONFIG_INPUT:-'low'}
-PERSISTENCE_RDB_CONFIG=${PERSISTENCE_RDB_CONFIG:-'86400 1 21600 100 3600 10000'}
-PERSISTENCE_AOF_CONFIG=${PERSISTENCE_AOF_CONFIG:-'everysec'}
-FALKORDB_CACHE_SIZE=${FALKORDB_CACHE_SIZE:-25}
-FALKORDB_NODE_CREATION_BUFFER=${FALKORDB_NODE_CREATION_BUFFER:-16384}
-FALKORDB_MAX_QUEUED_QUERIES=${FALKORDB_MAX_QUEUED_QUERIES:-50}
-FALKORDB_RESULT_SET_SIZE=${FALKORDB_RESULT_SET_SIZE:-10000}
-FALKORDB_QUERY_MEM_CAPACITY=${FALKORDB_QUERY_MEM_CAPACITY:-0}
-FALKORDB_TIMEOUT_MAX=${FALKORDB_TIMEOUT_MAX:-0}
-FALKORDB_TIMEOUT_DEFAULT=${FALKORDB_TIMEOUT_DEFAULT:-0}
-FALKORDB_VKEY_MAX_ENTITY_COUNT=${FALKORDB_VKEY_MAX_ENTITY_COUNT:-4611686000000000000}
-FALKORDB_EFFECTS_THRESHOLD=${FALKORDB_EFFECTS_THRESHOLD:-0}
-MEMORY_LIMIT=${MEMORY_LIMIT:-''}
-AOF_FILE_SIZE_TO_MONITOR=${AOF_FILE_SIZE_TO_MONITOR:-5} # 5MB
+initialize_defaults() {
+  RUN_METRICS=${RUN_METRICS:-1}
+  RUN_HEALTH_CHECK=${RUN_HEALTH_CHECK:-1}
+  RUN_NODE=${RUN_NODE:-1}
+  TLS=${TLS:-false}
+  NODE_INDEX=${NODE_INDEX:-0}
+  NETWORKING_TYPE=${NETWORKING_TYPE:-"PUBLIC"}
+  INSTANCE_TYPE=${INSTANCE_TYPE:-''}
+  PERSISTENCE_RDB_CONFIG_INPUT=${PERSISTENCE_RDB_CONFIG_INPUT:-'low'}
+  PERSISTENCE_RDB_CONFIG=${PERSISTENCE_RDB_CONFIG:-'86400 1 21600 100 3600 10000'}
+  PERSISTENCE_AOF_CONFIG=${PERSISTENCE_AOF_CONFIG:-'everysec'}
+  FALKORDB_CACHE_SIZE=${FALKORDB_CACHE_SIZE:-25}
+  FALKORDB_NODE_CREATION_BUFFER=${FALKORDB_NODE_CREATION_BUFFER:-16384}
+  FALKORDB_MAX_QUEUED_QUERIES=${FALKORDB_MAX_QUEUED_QUERIES:-50}
+  FALKORDB_RESULT_SET_SIZE=${FALKORDB_RESULT_SET_SIZE:-10000}
+  FALKORDB_QUERY_MEM_CAPACITY=${FALKORDB_QUERY_MEM_CAPACITY:-0}
+  FALKORDB_TIMEOUT_MAX=${FALKORDB_TIMEOUT_MAX:-0}
+  FALKORDB_TIMEOUT_DEFAULT=${FALKORDB_TIMEOUT_DEFAULT:-0}
+  FALKORDB_VKEY_MAX_ENTITY_COUNT=${FALKORDB_VKEY_MAX_ENTITY_COUNT:-4611686000000000000}
+  FALKORDB_EFFECTS_THRESHOLD=${FALKORDB_EFFECTS_THRESHOLD:-0}
+  MEMORY_LIMIT=${MEMORY_LIMIT:-''}
+  AOF_FILE_SIZE_TO_MONITOR=${AOF_FILE_SIZE_TO_MONITOR:-5}
+  CLUSTER_REPLICAS=${CLUSTER_REPLICAS:-1}
+  IS_MULTI_ZONE=${IS_MULTI_ZONE:-0}
+  NODE_HOST=${NODE_HOST:-localhost}
+  NODE_PORT=${NODE_PORT:-6379}
+  BUS_PORT=${BUS_PORT:-16379}
+  ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
+  TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
+  SELFSIGNED_CA_PATH="$TLS_MOUNT_PATH/selfsigned-ca.crt"
+  DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
+}
 
-# If vars are <nil>, set it to 0
-if [[ "$FALKORDB_QUERY_MEM_CAPACITY" == "<nil>" ]]; then
-  FALKORDB_QUERY_MEM_CAPACITY=0
-fi
-if [[ "$FALKORDB_TIMEOUT_MAX" == "<nil>" ]]; then
-  FALKORDB_TIMEOUT_MAX=0
-fi
-if [[ "$FALKORDB_TIMEOUT_DEFAULT" == "<nil>" ]]; then
-  FALKORDB_TIMEOUT_DEFAULT=0
-fi
-
-CLUSTER_REPLICAS=${CLUSTER_REPLICAS:-1}
-IS_MULTI_ZONE=${IS_MULTI_ZONE:-0}
-
-NODE_HOST=${NODE_HOST:-localhost}
-NODE_PORT=${NODE_PORT:-6379}
-BUS_PORT=${BUS_PORT:-16379}
-
-ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
-TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
-SELFSIGNED_CA_PATH="$TLS_MOUNT_PATH/selfsigned-ca.crt"
-DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
-
-# Add backward compatibility for /data folder
-if [[ "$DATA_DIR" != '/data' ]]; then
-  mkdir -p $DATA_DIR
-  if [[ -d '/data' ]]; then
-    # create simlink
-    ln -s /data $DATA_DIR
+normalize_optional_config_values() {
+  if [[ "$FALKORDB_QUERY_MEM_CAPACITY" == "<nil>" ]]; then
+    FALKORDB_QUERY_MEM_CAPACITY=0
   fi
-fi
-
-if [[ $(basename "$DATA_DIR") != 'data' ]];then DATA_DIR=$DATA_DIR/data;fi 
-
-# If TLS is enabled and selfsigned-ca.crt exists, create a combined CA cert file
-if [[ "$TLS" == "true" ]] && [[ -f "$SELFSIGNED_CA_PATH" ]]; then
-  if ! cat "$ROOT_CA_PATH" "$SELFSIGNED_CA_PATH" > "$DATA_DIR/selfsigned-tls-combined.pem"; then
-    echo "Failed to create combined CA cert file"
-    exit 1
+  if [[ "$FALKORDB_TIMEOUT_MAX" == "<nil>" ]]; then
+    FALKORDB_TIMEOUT_MAX=0
   fi
-  ROOT_CA_PATH="$DATA_DIR/selfsigned-tls-combined.pem"
-fi
+  if [[ "$FALKORDB_TIMEOUT_DEFAULT" == "<nil>" ]]; then
+    FALKORDB_TIMEOUT_DEFAULT=0
+  fi
+}
 
-DEBUG=${DEBUG:-0}
-REPLACE_NODE_CONF=${REPLACE_NODE_CONF:-0}
-TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
-AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
-SAVE_LOGS_TO_FILE=${SAVE_LOGS_TO_FILE:-1}
-LOG_LEVEL=${LOG_LEVEL:-notice}
-RESOURCE_ALIAS=${RESOURCE_ALIAS:-""}
+prepare_data_dir() {
+  if [[ "$DATA_DIR" != '/data' ]]; then
+    mkdir -p "$DATA_DIR"
+    if [[ -d '/data' ]] && [[ ! -e "$DATA_DIR/data" ]]; then
+      ln -s /data "$DATA_DIR"
+    fi
+  fi
 
-DATE_NOW=$(date +"%Y%m%d%H%M%S")
-FALKORDB_LOG_FILE_PATH=$(if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then echo $DATA_DIR/falkordb_$DATE_NOW.log; else echo "/dev/null"; fi)
-NODE_CONF_FILE=$DATA_DIR/node.conf
+  if [[ $(basename "$DATA_DIR") != 'data' ]]; then
+    DATA_DIR="$DATA_DIR/data"
+  fi
+}
 
-if [[ $OMNISTRATE_ENVIRONMENT_TYPE != "PROD" ]]; then
-  DEBUG=1
-fi
+prepare_tls_ca_bundle() {
+  if [[ "$TLS" == "true" ]] && [[ -f "$SELFSIGNED_CA_PATH" ]]; then
+    if ! cat "$ROOT_CA_PATH" "$SELFSIGNED_CA_PATH" > "$DATA_DIR/selfsigned-tls-combined.pem"; then
+      echo "Failed to create combined CA cert file"
+      exit 1
+    fi
+    ROOT_CA_PATH="$DATA_DIR/selfsigned-tls-combined.pem"
+  fi
+}
 
-if [[ ! -s "$FALKORDB_HOME/run_bgrewriteaof" && ! -f "$FALKORDB_HOME/run_bgrewriteaof" ]]; then
-  echo "Creating run_bgrewriteaof script"
-  echo "
+initialize_runtime_paths() {
+  DEBUG=${DEBUG:-0}
+  REPLACE_NODE_CONF=${REPLACE_NODE_CONF:-0}
+  TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
+  AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
+  SAVE_LOGS_TO_FILE=${SAVE_LOGS_TO_FILE:-1}
+  LOG_LEVEL=${LOG_LEVEL:-notice}
+  RESOURCE_ALIAS=${RESOURCE_ALIAS:-""}
+  DATE_NOW=$(date +"%Y%m%d%H%M%S")
+  FALKORDB_LOG_FILE_PATH=$(if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then echo "$DATA_DIR/falkordb_$DATE_NOW.log"; else echo "/dev/null"; fi)
+  NODE_CONF_FILE="$DATA_DIR/node.conf"
+
+  if [[ $OMNISTRATE_ENVIRONMENT_TYPE != "PROD" ]]; then
+    DEBUG=1
+  fi
+}
+
+ensure_run_bgrewriteaof_script() {
+  if [[ ! -s "$FALKORDB_HOME/run_bgrewriteaof" && ! -f "$FALKORDB_HOME/run_bgrewriteaof" ]]; then
+    echo "Creating run_bgrewriteaof script"
+    echo "
       #!/bin/bash
       set -e
       AOF_FILE_SIZE_TO_MONITOR=\${AOF_FILE_SIZE_TO_MONITOR:-5}
       ROOT_CA_PATH=\${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
-      TLS_CONNECTION_STRING=$(if [[ \$TLS == "true" ]]; then echo "--tls --cacert \$ROOT_CA_PATH"; else echo ""; fi)
+      TLS_CONNECTION_STRING=$(if [[ \$TLS == \"true\" ]]; then echo \"--tls --cacert \$ROOT_CA_PATH\"; else echo \"\"; fi)
       size=\$(stat -c%s $DATA_DIR/appendonlydir/appendonly.aof.*.incr.aof)
       if [ \$size -gt \$((AOF_FILE_SIZE_TO_MONITOR * 1024 * 1024)) ]; then
         echo \"File larger than \$AOF_FILE_SIZE_TO_MONITOR MB, running BGREWRITEAOF\"
@@ -116,12 +120,23 @@ if [[ ! -s "$FALKORDB_HOME/run_bgrewriteaof" && ! -f "$FALKORDB_HOME/run_bgrewri
         echo \"File smaller than \$AOF_FILE_SIZE_TO_MONITOR MB, not running BGREWRITEAOF\"
       fi
       " > "$DATA_DIR/run_bgrewriteaof"
-  chmod +x "$DATA_DIR/run_bgrewriteaof"
-  ln -s "$DATA_DIR/run_bgrewriteaof" $FALKORDB_HOME/run_bgrewriteaof
-  echo "run_bgrewriteaof script created"
-else
-  echo "run_bgrewriteaof script already exists"
-fi
+    chmod +x "$DATA_DIR/run_bgrewriteaof"
+    ln -s "$DATA_DIR/run_bgrewriteaof" "$FALKORDB_HOME/run_bgrewriteaof"
+    echo "run_bgrewriteaof script created"
+  else
+    echo "run_bgrewriteaof script already exists"
+  fi
+}
+
+init_environment() {
+  load_credentials
+  initialize_defaults
+  normalize_optional_config_values
+  prepare_data_dir
+  prepare_tls_ca_bundle
+  initialize_runtime_paths
+  ensure_run_bgrewriteaof_script
+}
 
 meet_unknown_nodes() {
   # Had to add sleep until things are stable (nodes that can communicate should be given time to do so)
@@ -412,8 +427,6 @@ handle_sigterm() {
   exit 0
 }
 
-trap handle_sigterm SIGTERM
-
 log() {
   if [[ $DEBUG -eq 1 ]]; then
     echo $1
@@ -673,55 +686,48 @@ run_node() {
   tail -F $FALKORDB_LOG_FILE_PATH &
 }
 
-# If node.conf doesn't exist or $REPLACE_NODE_CONF=1, copy it from /falkordb
-if [ ! -f $NODE_CONF_FILE ] || [ "$REPLACE_NODE_CONF" -eq "1" ]; then
-  echo "Copying node.conf from /falkordb"
-  cp /falkordb/node.conf $NODE_CONF_FILE
-fi
-
-# Create log file
-if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then
-  if [[ ! -f $FALKORDB_LOG_FILE_PATH ]]; then
-    touch $FALKORDB_LOG_FILE_PATH
+ensure_node_conf_exists() {
+  if [[ ! -f "$NODE_CONF_FILE" ]] || [[ "$REPLACE_NODE_CONF" -eq "1" ]]; then
+    echo "Copying node.conf from /falkordb"
+    cp /falkordb/node.conf "$NODE_CONF_FILE"
   fi
-fi
+}
 
-# Fix namespace and rewrite restored peer IPs before starting the server.
-# Hostname rewrites must happen first so nodes.conf resolves against the current deployment.
-fix_namespace_in_config_files
-update_ips_in_nodes_conf
+ensure_log_file_exists() {
+  if [[ $SAVE_LOGS_TO_FILE -eq 1 ]] && [[ ! -f "$FALKORDB_LOG_FILE_PATH" ]]; then
+    touch "$FALKORDB_LOG_FILE_PATH"
+  fi
+}
 
-run_node
+prepare_node_files_for_startup() {
+  # Hostname rewrites must happen first so nodes.conf resolves against the current deployment.
+  fix_namespace_in_config_files
+  update_ips_in_nodes_conf
+}
 
-sleep 10
+post_start_configuration() {
+  create_user
+  set_memory_limit
+  set_rdb_persistence_config
+  set_aof_persistence_config
+  set_max_info_queries
+  config_rewrite
+}
 
-create_user
-set_memory_limit
-set_rdb_persistence_config
-set_aof_persistence_config
-set_max_info_queries
+ensure_cluster_membership() {
+  if [[ $NODE_INDEX -eq 0 && ! -f "$DATA_DIR/cluster_initialized" ]]; then
+    echo "Creating cluster"
+    create_cluster
+  elif [[ $NODE_INDEX -gt 5 ]]; then
+    echo "Joining cluster"
+    join_cluster
+  else
+    echo "Cluster does not exist. Waiting for it to be created"
+  fi
+}
 
-config_rewrite
-
-if [[ $NODE_INDEX -eq 0 && ! -f "$DATA_DIR/cluster_initialized" ]]; then
-  # Create cluster
-  echo "Creating cluster"
-  create_cluster
-elif [[ $NODE_INDEX -gt 5 ]]; then
-  # Join cluster
-  echo "Joining cluster"
-  join_cluster
-else
-  echo "Cluster does not exist. Waiting for it to be created"
-fi
-
-# Run this before health check to prevent client connections until discrepancies are resolved.
-meet_unknown_nodes
-ensure_replica_connects_to_the_right_master_ip
-
-# If TLS=true, create a script to rotate the certificate
-if [[ "$TLS" == "true" ]]; then
-  if [[ $RUN_NODE -eq 1 ]]; then
+create_tls_rotation_job_script() {
+  if [[ "$TLS" == "true" && $RUN_NODE -eq 1 ]]; then
     echo "Creating node certificate rotation job script"
     echo "
     #!/bin/bash
@@ -733,11 +739,33 @@ if [[ "$TLS" == "true" ]]; then
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-client-key-file $TLS_MOUNT_PATH/selfsigned-tls.key
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-auth-clients optional
     redis-cli -p $NODE_PORT -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING CONFIG SET tls-ca-cert-file $ROOT_CA_PATH
-    " >$DATA_DIR/cert_rotate_node.sh
-    chmod +x $DATA_DIR/cert_rotate_node.sh
+    " > "$DATA_DIR/cert_rotate_node.sh"
+    chmod +x "$DATA_DIR/cert_rotate_node.sh"
   fi
-fi
+}
 
-while true; do
-  sleep 1
-done
+wait_forever() {
+  while true; do
+    sleep 1
+  done
+}
+
+main() {
+  init_environment
+  trap handle_sigterm SIGTERM
+  ensure_node_conf_exists
+  ensure_log_file_exists
+  prepare_node_files_for_startup
+  run_node
+  sleep 10
+  post_start_configuration
+  ensure_cluster_membership
+  meet_unknown_nodes
+  ensure_replica_connects_to_the_right_master_ip
+  create_tls_rotation_job_script
+  wait_forever
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
