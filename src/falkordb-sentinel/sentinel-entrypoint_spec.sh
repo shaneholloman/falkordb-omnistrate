@@ -65,6 +65,15 @@ Describe "sentinel-entrypoint.sh helpers"
       The status should be success
       The output should eq ""
     End
+
+    It "ignores an empty secret file and falls back to env var"
+      : > "$temp_dir/empty_secret"
+      FALLBACK_VAR="fallback"
+      When call read_secret_or_env "$temp_dir/empty_secret" "FALLBACK_VAR"
+      The status should be success
+      The output should eq "fallback"
+      unset FALLBACK_VAR
+    End
   End
 
   Describe "resolve_host_ip()"
@@ -72,6 +81,20 @@ Describe "sentinel-entrypoint.sh helpers"
       When call resolve_host_ip "10.0.0.42"
       The status should be success
       The output should eq "10.0.0.42"
+    End
+
+    It "resolves a hostname via getent"
+      getent() {
+        if [[ "$2" == "sentinel.example.com" ]]; then
+          echo "10.0.0.99 sentinel.example.com"
+        else
+          return 1
+        fi
+      }
+
+      When call resolve_host_ip "sentinel.example.com"
+      The status should be success
+      The output should eq "10.0.0.99"
     End
 
     It "times out when a hostname never resolves"
@@ -192,6 +215,19 @@ EOF
       When call strip_stale_sentinel_state
       The status should be success
     End
+
+    It "handles file containing only stale entries"
+      cat <<'EOF' > "$SENTINEL_CONF_FILE"
+sentinel known-replica master 10.0.0.2 6379
+sentinel known-sentinel master 10.0.0.3 26379 abc123
+EOF
+
+      When call strip_stale_sentinel_state
+      The status should be success
+      The output should include "Stripping stale sentinel state"
+      The contents of file "$SENTINEL_CONF_FILE" should not include "known-replica"
+      The contents of file "$SENTINEL_CONF_FILE" should not include "known-sentinel"
+    End
   End
 
   Describe "full namespace+DNS+stale restore pipeline"
@@ -231,6 +267,49 @@ EOF
       The contents of file "$SENTINEL_CONF_FILE" should include "sentinel auth-pass master"
       The contents of file "$SENTINEL_CONF_FILE" should not include "known-replica"
       The contents of file "$SENTINEL_CONF_FILE" should not include "known-sentinel"
+    End
+  End
+
+  Describe "prepare_data_dir()"
+    It "appends /data when basename is not data"
+      DATA_DIR="$temp_dir/newdir"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "${temp_dir}/newdir/data"
+    End
+
+    It "keeps DATA_DIR unchanged when basename is already data"
+      DATA_DIR="$temp_dir/otherparent/data"
+      mkdir -p "$DATA_DIR"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "${temp_dir}/otherparent/data"
+    End
+
+    It "skips mkdir when DATA_DIR is /data"
+      DATA_DIR="/data"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "/data"
+    End
+  End
+
+  Describe "log()"
+    It "outputs message when DEBUG is 1"
+      DEBUG=1
+      When call log "test message"
+      The status should be success
+      The output should eq "test message"
+    End
+
+    It "is silent when DEBUG is 0"
+      DEBUG=0
+      When call log "test message"
+      The status should be success
+      The output should eq ""
     End
   End
 End

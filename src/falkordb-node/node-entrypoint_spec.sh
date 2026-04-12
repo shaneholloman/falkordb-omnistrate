@@ -197,6 +197,16 @@ Describe "node-entrypoint.sh helpers"
       The variable MEMORY_LIMIT should eq "4G"
       The output should include "Memory Limit: 4G"
     End
+
+    It "calls get_default_memory_limit when MEMORY_LIMIT is empty"
+      MEMORY_LIMIT=""
+      get_default_memory_limit() { echo "100MB"; }
+
+      When call get_memory_limit
+      The status should be success
+      The variable MEMORY_LIMIT should eq "100MB"
+      The output should include "Memory Limit: 100MB"
+    End
   End
 
   Describe "fix_namespace_in_config_files()"
@@ -291,6 +301,90 @@ EOF
       The status should be failure
       The output should include "Failed to resolve self node host"
       The stderr should include "Timed out trying to resolve ip for self node host"
+    End
+  End
+
+  Describe "check_admin_password_change()"
+    It "sets RESET_ADMIN_PASSWORD when password differs"
+      ADMIN_PASSWORD="newpass"
+      echo 'requirepass "oldpass"' > "$NODE_CONF_FILE"
+      RESET_ADMIN_PASSWORD=0
+
+      When call check_admin_password_change
+      The status should be success
+      The variable RESET_ADMIN_PASSWORD should eq 1
+    End
+
+    It "does not set RESET_ADMIN_PASSWORD when password matches"
+      ADMIN_PASSWORD="testpass"
+      echo 'requirepass "testpass"' > "$NODE_CONF_FILE"
+      RESET_ADMIN_PASSWORD=0
+
+      When call check_admin_password_change
+      The status should be success
+      The variable RESET_ADMIN_PASSWORD should eq 0
+    End
+
+    It "does nothing when node.conf does not exist"
+      rm -f "$NODE_CONF_FILE"
+      RESET_ADMIN_PASSWORD=0
+
+      When call check_admin_password_change
+      The status should be success
+      The variable RESET_ADMIN_PASSWORD should eq 0
+    End
+
+    It "handles unquoted password in node.conf"
+      ADMIN_PASSWORD="mypass"
+      echo 'requirepass mypass' > "$NODE_CONF_FILE"
+      RESET_ADMIN_PASSWORD=0
+
+      When call check_admin_password_change
+      The status should be success
+      The variable RESET_ADMIN_PASSWORD should eq 0
+    End
+  End
+
+  Describe "prepare_data_dir()"
+    It "appends /data when basename is not data"
+      DATA_DIR="$temp_dir/newdir"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "${temp_dir}/newdir/data"
+    End
+
+    It "keeps DATA_DIR unchanged when basename is already data"
+      DATA_DIR="$temp_dir/otherparent/data"
+      mkdir -p "$DATA_DIR"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "${temp_dir}/otherparent/data"
+    End
+
+    It "skips mkdir when DATA_DIR is /data"
+      DATA_DIR="/data"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "/data"
+    End
+  End
+
+  Describe "log()"
+    It "outputs message when DEBUG is 1"
+      DEBUG=1
+      When call log "test message"
+      The status should be success
+      The output should eq "test message"
+    End
+
+    It "is silent when DEBUG is 0"
+      DEBUG=0
+      When call log "test message"
+      The status should be success
+      The output should eq ""
     End
   End
 End

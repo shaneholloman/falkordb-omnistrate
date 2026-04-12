@@ -164,6 +164,25 @@ EOF
       The output should include "Current DNS suffix:"
       The contents of file "$NODE_CONF_FILE" should include "cluster-sz-0.instance-abc.hc-new.us-central1.gcp.beef.cloud"
     End
+
+    It "rewrites both namespace and DNS suffix simultaneously"
+      INSTANCE_ID="instance-new"
+      DNS_SUFFIX="hc-new.us-central1.gcp.beef.cloud"
+
+      cat <<'EOF' > "$NODE_CONF_FILE"
+cluster-announce-hostname cluster-sz-0.instance-old.hc-old.us-central1.gcp.deadbeef.cloud
+EOF
+      cat <<'EOF' > "$DATA_DIR/nodes.conf"
+07c37dfeb2352e66 192.168.1.10:6379@16379,cluster-sz-0.instance-old.hc-old.us-central1.gcp.deadbeef.cloud myself,master - 0 0 1 connected
+EOF
+
+      When call fix_namespace_in_config_files
+      The status should be success
+      The output should include "Current namespace: instance-new"
+      The output should include "Current DNS suffix: hc-new.us-central1.gcp.beef.cloud"
+      The contents of file "$NODE_CONF_FILE" should include "cluster-sz-0.instance-new.hc-new.us-central1.gcp.beef.cloud"
+      The contents of file "$DATA_DIR/nodes.conf" should include "cluster-sz-0.instance-new.hc-new.us-central1.gcp.beef.cloud"
+    End
   End
 
   Describe "prepare_node_files_for_startup()"
@@ -349,6 +368,25 @@ EOF
       # Should NOT print "Updating IP" for the peer since IP is already 10.0.0.11
       The output should not include "Updating IP for node"
     End
+
+    It "returns early for empty nodes.conf"
+      : > "$DATA_DIR/nodes.conf"
+
+      When call update_ips_in_nodes_conf
+      The status should be success
+      The output should include "First time running the node.."
+    End
+
+    It "updates only the myself line when there are no peers"
+      cat <<'EOF' > "$DATA_DIR/nodes.conf"
+07c37dfeb2352e66 192.168.1.10:6379@16379,cluster-sz-0.instance-new.hc-new.us-central1.gcp.beef.cloud myself,master - 0 0 1 connected
+EOF
+
+      When call update_ips_in_nodes_conf
+      The status should be success
+      The output should include "Updating local node address"
+      The contents of file "$DATA_DIR/nodes.conf" should include "10.0.0.10:6379@16379,cluster-sz-0.instance-new.hc-new.us-central1.gcp.beef.cloud myself"
+    End
   End
 
   Describe "normalize_optional_config_values()"
@@ -374,6 +412,81 @@ EOF
       The variable FALKORDB_QUERY_MEM_CAPACITY should eq "100"
       The variable FALKORDB_TIMEOUT_MAX should eq "200"
       The variable FALKORDB_TIMEOUT_DEFAULT should eq "300"
+    End
+  End
+
+  Describe "get_host()"
+    It "returns hostname for a given index in single-zone mode"
+      NODE_HOST="cluster-sz-0.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+      NODE_INDEX=0
+      IS_MULTI_ZONE=0
+
+      When call get_host 1
+      The status should be success
+      The output should eq "cluster-sz-1.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+    End
+
+    It "returns hostname for a given index in multi-zone mode"
+      NODE_HOST="cluster-mz-0.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+      NODE_INDEX=0
+      IS_MULTI_ZONE=1
+
+      When call get_host 3
+      The status should be success
+      The output should eq "cluster-mz-3.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+    End
+
+    It "replaces only the matching node index"
+      NODE_HOST="cluster-sz-2.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+      NODE_INDEX=2
+      IS_MULTI_ZONE=0
+
+      When call get_host 5
+      The status should be success
+      The output should eq "cluster-sz-5.instance-abc.hc-new.us-central1.gcp.beef.cloud"
+    End
+  End
+
+  Describe "prepare_data_dir()"
+    It "appends /data when basename is not data"
+      DATA_DIR="$temp_dir/newdir"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "${temp_dir}/newdir/data"
+    End
+
+    It "keeps DATA_DIR unchanged when basename is already data"
+      DATA_DIR="$temp_dir/otherparent/data"
+      mkdir -p "$DATA_DIR"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "${temp_dir}/otherparent/data"
+    End
+
+    It "skips mkdir when DATA_DIR is /data"
+      DATA_DIR="/data"
+
+      When call prepare_data_dir
+      The status should be success
+      The variable DATA_DIR should eq "/data"
+    End
+  End
+
+  Describe "log()"
+    It "outputs message when DEBUG is 1"
+      DEBUG=1
+      When call log "test message"
+      The status should be success
+      The output should eq "test message"
+    End
+
+    It "is silent when DEBUG is 0"
+      DEBUG=0
+      When call log "test message"
+      The status should be success
+      The output should eq ""
     End
   End
 End
