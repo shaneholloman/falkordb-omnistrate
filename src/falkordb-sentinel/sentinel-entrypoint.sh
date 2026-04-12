@@ -94,7 +94,7 @@ initialize_runtime_paths() {
   AUTH_CONNECTION_STRING="-a $ADMIN_PASSWORD --no-auth-warning"
   DATE_NOW=$(date +"%Y%m%d%H%M%S")
   SENTINEL_CONF_FILE=$DATA_DIR/sentinel.conf
-  SENTINEL_LOG_FILE_PATH=$(if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then echo $DATA_DIR/sentinel_$DATE_NOW.log; else echo ""; fi)
+  SENTINEL_LOG_FILE_PATH=$(if [[ $SAVE_LOGS_TO_FILE -eq 1 ]]; then echo $DATA_DIR/sentinel_$DATE_NOW.log; else echo "/dev/null"; fi)
 }
 
 init_environment() {
