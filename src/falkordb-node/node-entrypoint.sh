@@ -140,25 +140,25 @@ initialize_runtime_paths() {
 
 ensure_run_bgrewriteaof_script() {
   echo "Creating run_bgrewriteaof script"
-  echo "
-    #!/bin/bash
-    set -e
-    AOF_FILE_SIZE_TO_MONITOR=\${AOF_FILE_SIZE_TO_MONITOR:-5}
-    ROOT_CA_PATH=\${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
-    TLS_CONNECTION_STRING=$(if [[ \$TLS == \"true\" ]]; then echo \"--tls --cacert \$ROOT_CA_PATH\"; else echo \"\"; fi)
-    size=0
-    for file in $DATA_DIR/appendonlydir/appendonly.aof.*.incr.aof; do
-      if [[ -f \"\$file\" ]]; then
-        size=\$((size + \$(stat -c%s \"\$file\")))
-      fi
-    done
-    if [ \$size -gt \$((AOF_FILE_SIZE_TO_MONITOR * 1024 * 1024)) ]; then
-      echo \"File larger than \$AOF_FILE_SIZE_TO_MONITOR MB, running BGREWRITEAOF\"
-      $(which redis-cli) -a \$(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING BGREWRITEAOF
-    else
-      echo \"File smaller than \$AOF_FILE_SIZE_TO_MONITOR MB, not running BGREWRITEAOF\"
-    fi
-    " > "$DATA_DIR/run_bgrewriteaof"
+  cat > "$DATA_DIR/run_bgrewriteaof" <<'BGREWRITE_EOF'
+#!/bin/bash
+set -e
+AOF_FILE_SIZE_TO_MONITOR=${AOF_FILE_SIZE_TO_MONITOR:-5}
+ROOT_CA_PATH=${ROOT_CA_PATH:-/etc/ssl/certs/ca-certificates.crt}
+TLS_CONNECTION_STRING=$(if [[ $TLS == "true" ]]; then echo "--tls --cacert $ROOT_CA_PATH"; else echo ""; fi)
+size=0
+for file in $DATA_DIR/appendonlydir/appendonly.aof.*.incr.aof; do
+  if [[ -f "$file" ]]; then
+    size=$((size + $(stat -c%s "$file")))
+  fi
+done
+if [ $size -gt $((AOF_FILE_SIZE_TO_MONITOR * 1024 * 1024)) ]; then
+  echo "File larger than $AOF_FILE_SIZE_TO_MONITOR MB, running BGREWRITEAOF"
+  $(which redis-cli) -a $(cat /run/secrets/adminpassword) --no-auth-warning $TLS_CONNECTION_STRING BGREWRITEAOF
+else
+  echo "File smaller than $AOF_FILE_SIZE_TO_MONITOR MB, not running BGREWRITEAOF"
+fi
+BGREWRITE_EOF
   chmod +x "$DATA_DIR/run_bgrewriteaof"
   ln -s "$DATA_DIR/run_bgrewriteaof" $FALKORDB_HOME/run_bgrewriteaof
   echo "run_bgrewriteaof script created"
@@ -731,9 +731,9 @@ main() {
     create_user
     add_master_to_sentinel
     post_start_configuration
+    set_max_info_queries
   fi
 
-  set_max_info_queries
   check_network_type_changes
   create_tls_rotation_job_script
   wait_forever

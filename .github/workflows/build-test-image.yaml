@@ -91,6 +91,8 @@ jobs:
 
   shellspec:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -161,8 +163,8 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: falkordb/${{ matrix.image-name }}:dev-${{ github.event.head_commit.id || github.run_id }}
-          cache-from: type=gha,scope=${{ matrix.image.image_name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image.image_name }}
+          cache-from: type=gha,scope=${{ matrix.image-name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image-name }}
 
       - name: Scan image with Grype
         uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v6
