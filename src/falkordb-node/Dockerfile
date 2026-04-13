@@ -1,9 +1,12 @@
-ARG FALKORDB_VERSION=v4.16.7
+ARG FALKORDB_VERSION=v4.18.1
 
 FROM falkordb/falkordb-server:$FALKORDB_VERSION
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends bash curl jq openssl supervisor gdb ca-certificates libc6 libgcc-s1 libstdc++6 && \
+    apt-get -f install -y && \
+    apt-get upgrade -y && \
+    ln -sf /bin/true /usr/sbin/update-rc.d && \
+    apt-get install -y --no-install-recommends bash curl jq openssl supervisor ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 ADD https://secure.globalsign.com/cacert/root-r1.crt /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt
@@ -14,8 +17,7 @@ RUN openssl x509 -in /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt 
   chmod 644 /usr/local/share/ca-certificates/GlobalSign_Root_CA_R1.crt && \
   update-ca-certificates
 
-RUN apt-get purge -y nodejs && \
-    rm -f /etc/apt/sources.list.d/nodesource.sources && \
+RUN rm -f /etc/apt/sources.list.d/nodesource.sources && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
