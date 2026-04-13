@@ -155,6 +155,7 @@ services:
       - FALKORDB_QUERY_MEM_CAPACITY=52428800
       - PERSISTENCE_AOF_CONFIG=no
       - SKIP_HEALTH_CHECK=false
+      - LDAP_ENABLED=true
     ports:
       - "6379:6379"
       # - "9121:9121"

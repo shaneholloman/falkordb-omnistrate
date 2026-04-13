@@ -423,4 +423,36 @@ EOF
       The output should include "LDAP module already present in node.conf"
     End
   End
+
+  Describe "LDAP_ENABLED feature flag"
+    It "defaults to false in initialize_defaults"
+      When call initialize_defaults
+      The status should be success
+      The variable LDAP_ENABLED should eq "false"
+    End
+
+    It "respects explicit true value"
+      LDAP_ENABLED=true
+      When call initialize_defaults
+      The status should be success
+      The variable LDAP_ENABLED should eq "true"
+    End
+
+    It "forces LDAP_ENABLED to false when RUN_SENTINEL=1"
+      LDAP_ENABLED=true
+      RUN_SENTINEL=1
+      When call initialize_defaults
+      The status should be success
+      The variable LDAP_ENABLED should eq "false"
+      The output should include "LDAP is not supported with RUN_SENTINEL=1"
+    End
+
+    It "keeps LDAP_ENABLED false when RUN_SENTINEL=1 and LDAP_ENABLED was already false"
+      LDAP_ENABLED=false
+      RUN_SENTINEL=1
+      When call initialize_defaults
+      The status should be success
+      The variable LDAP_ENABLED should eq "false"
+    End
+  End
 End

@@ -49,6 +49,7 @@ initialize_defaults() {
   TLS_MOUNT_PATH=${TLS_MOUNT_PATH:-/etc/tls}
   SELFSIGNED_CA_PATH="$TLS_MOUNT_PATH/selfsigned-ca.crt"
   DATA_DIR=${DATA_DIR:-"${FALKORDB_HOME}/data"}
+  LDAP_ENABLED=${LDAP_ENABLED:-false}
 }
 
 normalize_optional_config_values() {
@@ -156,7 +157,9 @@ init_environment() {
   prepare_data_dir
   prepare_tls_ca_bundle
   initialize_runtime_paths
-  initialize_ldap
+  if [[ "$LDAP_ENABLED" == "true" ]]; then
+    initialize_ldap
+  fi
   ensure_run_bgrewriteaof_script
 }
 
@@ -675,13 +678,17 @@ run_node() {
   sed -i "s/\$FALKORDB_QUERY_MEM_CAPACITY/$FALKORDB_QUERY_MEM_CAPACITY/g" $NODE_CONF_FILE
   sed -i "s/\$FALKORDB_VKEY_MAX_ENTITY_COUNT/$FALKORDB_VKEY_MAX_ENTITY_COUNT/g" $NODE_CONF_FILE
   sed -i "s/\$FALKORDB_EFFECTS_THRESHOLD/$FALKORDB_EFFECTS_THRESHOLD/g" $NODE_CONF_FILE
-  sed -i "s|\$LDAP_AUTH_SERVER_URL|$LDAP_AUTH_SERVER_URL|g" $NODE_CONF_FILE
-  sed -i "s|\$LDAP_AUTH_CA_CERT_PATH|$LDAP_AUTH_CA_CERT_PATH|g" $NODE_CONF_FILE
-  sed -i "s|\$INSTANCE_ID|$INSTANCE_ID|g" $NODE_CONF_FILE
-  sed -i "s|\$LDAP_AUTH_PASSWORD|$LDAP_AUTH_PASSWORD|g" $NODE_CONF_FILE
+  if [[ "$LDAP_ENABLED" == "true" ]]; then
+    sed -i "s|\$LDAP_AUTH_SERVER_URL|$LDAP_AUTH_SERVER_URL|g" $NODE_CONF_FILE
+    sed -i "s|\$LDAP_AUTH_CA_CERT_PATH|$LDAP_AUTH_CA_CERT_PATH|g" $NODE_CONF_FILE
+    sed -i "s|\$INSTANCE_ID|$INSTANCE_ID|g" $NODE_CONF_FILE
+    sed -i "s|\$LDAP_AUTH_PASSWORD|$LDAP_AUTH_PASSWORD|g" $NODE_CONF_FILE
+  fi
   echo "dir $DATA_DIR/$i" >>$NODE_CONF_FILE
 
-  add_ldap_config_to_conf
+  if [[ "$LDAP_ENABLED" == "true" ]]; then
+    add_ldap_config_to_conf
+  fi
 
   if [[ $TLS == "true" ]]; then
     sed -i "s|/etc/ssl/certs/GlobalSign_Root_CA.pem|${ROOT_CA_PATH}|g" "$NODE_CONF_FILE"
