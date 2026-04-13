@@ -779,8 +779,8 @@ wait_forever() {
 main() {
   init_environment
   trap handle_sigterm SIGTERM
-  ensure_node_conf_exists
   check_admin_password_change
+  ensure_node_conf_exists
   ensure_log_file_exists
   set_persistence_config
   get_self_host_ip
