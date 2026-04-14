@@ -45,7 +45,7 @@ def is_stale_master_error(exception):
 
 
 def add_data(
-    instance: OmnistrateFleetInstance, ssl=False, key="test", n=1, network_type="PUBLIC"
+    instance: OmnistrateFleetInstance, ssl=False, key="test", n=1, network_type="PUBLIC", retry_on_ldap_fail_seconds=10
 ):
     logging.info(f"Adding {n} data entries to graph '{key}'")
     max_retries = 3
@@ -58,6 +58,11 @@ def add_data(
             logging.debug(f"Successfully added {n} entries to graph '{key}'")
             return
         except (ReadOnlyError, Exception) as e:
+            if "LDAP authentication failed" in str(e):
+                if retry_on_ldap_fail_seconds > 0:
+                    time.sleep(retry_on_ldap_fail_seconds)
+                    logging.warning("LDAP authentication failed, retrying after delay")
+                    return add_data(instance, ssl, key, n, network_type, retry_on_ldap_fail_seconds=retry_on_ldap_fail_seconds-5)
             if is_stale_master_error(e):
                 logging.warning(
                     f"Connection to stale master detected in add_data (attempt {attempt + 1}/{max_retries}): {e}"

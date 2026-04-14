@@ -387,4 +387,72 @@ EOF
       The output should eq ""
     End
   End
+
+  Describe "add_ldap_config_to_conf()"
+    It "appends LDAP module configuration to node.conf"
+      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389"
+      LDAP_AUTH_CA_CERT_PATH="$DATA_DIR/ldap-ca-cert.crt"
+      LDAP_AUTH_PASSWORD="ldap-secret"
+      INSTANCE_ID="instance-abc"
+      : > "$NODE_CONF_FILE"
+
+      When call add_ldap_config_to_conf
+      The status should be success
+      The output should include "Adding LDAP module to node.conf"
+      The contents of file "$NODE_CONF_FILE" should include "loadmodule /var/lib/falkordb/bin/valkey_ldap.so"
+      The contents of file "$NODE_CONF_FILE" should include "ldap.servers"
+      The contents of file "$NODE_CONF_FILE" should include "ldap.auth_mode bind"
+      The contents of file "$NODE_CONF_FILE" should include "ldap.tls_ca_cert_path"
+      The contents of file "$NODE_CONF_FILE" should include "ldap.bind_dn_suffix"
+      The contents of file "$NODE_CONF_FILE" should include "ou=instance-abc,dc=falkordb,dc=cloud"
+      The contents of file "$NODE_CONF_FILE" should include "ldap.search_bind_passwd"
+      The contents of file "$NODE_CONF_FILE" should include "ldap.exempted_users_regex"
+      The contents of file "$NODE_CONF_FILE" should include "ldap.acl_fallback_enabled yes"
+      The contents of file "$NODE_CONF_FILE" should include "ldap.tls_skip_verify yes"
+    End
+
+    It "does not duplicate LDAP config when already present"
+      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389"
+      LDAP_AUTH_CA_CERT_PATH="$DATA_DIR/ldap-ca-cert.crt"
+      LDAP_AUTH_PASSWORD="ldap-secret"
+      INSTANCE_ID="instance-abc"
+      echo "loadmodule /var/lib/falkordb/bin/valkey_ldap.so" > "$NODE_CONF_FILE"
+
+      When call add_ldap_config_to_conf
+      The status should be success
+      The output should include "LDAP module already present in node.conf"
+    End
+  End
+
+  Describe "LDAP_ENABLED feature flag"
+    It "defaults to false in initialize_defaults"
+      When call initialize_defaults
+      The status should be success
+      The variable LDAP_ENABLED should eq "false"
+    End
+
+    It "respects explicit true value"
+      LDAP_ENABLED=true
+      When call initialize_defaults
+      The status should be success
+      The variable LDAP_ENABLED should eq "true"
+    End
+
+    It "forces LDAP_ENABLED to false when RUN_SENTINEL=1"
+      LDAP_ENABLED=true
+      RUN_SENTINEL=1
+      When call initialize_defaults
+      The status should be success
+      The variable LDAP_ENABLED should eq "false"
+      The output should include "LDAP is not supported with RUN_SENTINEL=1"
+    End
+
+    It "keeps LDAP_ENABLED false when RUN_SENTINEL=1 and LDAP_ENABLED was already false"
+      LDAP_ENABLED=false
+      RUN_SENTINEL=1
+      When call initialize_defaults
+      The status should be success
+      The variable LDAP_ENABLED should eq "false"
+    End
+  End
 End
