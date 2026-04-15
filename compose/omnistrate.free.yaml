@@ -156,6 +156,7 @@ services:
       - PERSISTENCE_AOF_CONFIG=no
       - SKIP_HEALTH_CHECK=false
       - LDAP_ENABLED=true
+      - LDAP_AUTH_SERVER_URL=ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390
     ports:
       - "6379:6379"
       # - "9121:9121"

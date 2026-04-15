@@ -106,7 +106,7 @@ initialize_runtime_paths() {
 
 initialize_ldap() {
   LDAP_AUTH_SERVER_HTTP_URL=${LDAP_AUTH_SERVER_HTTP_URL:-'https://ldap-auth-service.ldap-auth.svc.cluster.local:8080'}
-  LDAP_AUTH_SERVER_URL=${LDAP_AUTH_SERVER_URL:-'ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389'}
+  LDAP_AUTH_SERVER_URL=${LDAP_AUTH_SERVER_URL:-'ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390'}
   LDAP_AUTH_PASSWORD=${LDAP_AUTH_PASSWORD:-''}
   LDAP_AUTH_NAMESPACE=${LDAP_AUTH_NAMESPACE:-'ldap-auth'}
   LDAP_AUTH_PASSWORD_SECRET_NAME=${LDAP_AUTH_PASSWORD_SECRET_NAME:-'ldap-auth-admin-secret'}
@@ -440,6 +440,18 @@ fix_namespace_in_config_files() {
   fi
 }
 
+wait_for_node_ready() {
+  local port=${1:-$NODE_PORT}
+  echo "Waiting for FalkorDB to be ready on port $port"
+  while true; do
+    if [[ $(redis-cli -p $port $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING PING 2>/dev/null) == "PONG" ]]; then
+      echo "FalkorDB is ready"
+      break
+    fi
+    sleep 1
+  done
+}
+
 wait_for_bgrewrite_to_finish() {
   tout=${tout:-30}
   # Give BGREWRITEAOF time to start
@@ -762,7 +774,35 @@ prepare_node_files_for_startup() {
   update_ips_in_nodes_conf
 }
 
+sync_ldap_server_url() {
+  local config_output current_ldap_url
+  local old_default="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389"
+
+  if ! config_output=$(redis-cli --raw -p $NODE_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING CONFIG GET ldap.servers 2>&1); then
+    echo "Could not read ldap.servers from running config"
+    return
+  fi
+
+  current_ldap_url=$(printf '%s\n' "$config_output" | sed -n '2p')
+
+  if [[ -z "$current_ldap_url" || "$current_ldap_url" == ERR* ]]; then
+    echo "ldap.servers not set or error reading config"
+    return
+  fi
+
+  if [[ "$current_ldap_url" == "$old_default" ]]; then
+    echo "Migrating ldap.servers from $old_default to $LDAP_AUTH_SERVER_URL"
+    redis-cli --raw -p $NODE_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING CONFIG SET ldap.servers "$LDAP_AUTH_SERVER_URL"
+    config_rewrite
+  else
+    echo "ldap.servers is already up to date: $current_ldap_url"
+  fi
+}
+
 post_start_configuration() {
+  if [[ "$LDAP_ENABLED" == "true" ]]; then
+    sync_ldap_server_url
+  fi
   create_user
   set_memory_limit
   set_rdb_persistence_config
@@ -814,7 +854,7 @@ main() {
   ensure_log_file_exists
   prepare_node_files_for_startup
   run_node
-  sleep 10
+  wait_for_node_ready
   post_start_configuration
   ensure_cluster_membership
   meet_unknown_nodes

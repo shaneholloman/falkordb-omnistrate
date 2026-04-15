@@ -115,6 +115,18 @@ handle_sigterm() {
   exit 0
 }
 
+wait_for_node_ready() {
+  local port=${1:-$NODE_PORT}
+  echo "Waiting for FalkorDB to be ready on port $port"
+  while true; do
+    if [[ $(redis-cli -p $port $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING PING 2>/dev/null) == "PONG" ]]; then
+      echo "FalkorDB is ready"
+      break
+    fi
+    sleep 1
+  done
+}
+
 wait_until_node_host_resolves() {
   # If $1 is an IP address, return
   if [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -323,7 +335,7 @@ run_sentinel() {
 
     supervisord -c $DATA_DIR/supervisord.conf &
 
-    sleep 10
+    wait_for_node_ready $SENTINEL_PORT
     
     if [[ "$RUN_NODE" -eq "1" ]]; then
       log "Master Name: $MASTER_NAME\Master Host: $NODE_HOST\Master Port: $NODE_PORT\nSentinel Quorum: $SENTINEL_QUORUM"
