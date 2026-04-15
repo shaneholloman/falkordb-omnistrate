@@ -492,7 +492,7 @@ EOF
 
   Describe "add_ldap_config_to_conf()"
     It "appends LDAP module configuration to node.conf"
-      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389"
+      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390"
       LDAP_AUTH_CA_CERT_PATH="$DATA_DIR/ldap-ca-cert.crt"
       LDAP_AUTH_PASSWORD="ldap-secret"
       INSTANCE_ID="instance-abc"
@@ -514,7 +514,7 @@ EOF
     End
 
     It "does not duplicate LDAP config when already present"
-      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389"
+      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390"
       LDAP_AUTH_CA_CERT_PATH="$DATA_DIR/ldap-ca-cert.crt"
       LDAP_AUTH_PASSWORD="ldap-secret"
       INSTANCE_ID="instance-abc"

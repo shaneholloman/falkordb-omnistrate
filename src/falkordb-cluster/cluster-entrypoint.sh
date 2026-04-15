@@ -106,7 +106,7 @@ initialize_runtime_paths() {
 
 initialize_ldap() {
   LDAP_AUTH_SERVER_HTTP_URL=${LDAP_AUTH_SERVER_HTTP_URL:-'https://ldap-auth-service.ldap-auth.svc.cluster.local:8080'}
-  LDAP_AUTH_SERVER_URL=${LDAP_AUTH_SERVER_URL:-'ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389'}
+  LDAP_AUTH_SERVER_URL=${LDAP_AUTH_SERVER_URL:-'ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390'}
   LDAP_AUTH_PASSWORD=${LDAP_AUTH_PASSWORD:-''}
   LDAP_AUTH_NAMESPACE=${LDAP_AUTH_NAMESPACE:-'ldap-auth'}
   LDAP_AUTH_PASSWORD_SECRET_NAME=${LDAP_AUTH_PASSWORD_SECRET_NAME:-'ldap-auth-admin-secret'}
@@ -762,7 +762,19 @@ prepare_node_files_for_startup() {
   update_ips_in_nodes_conf
 }
 
+sync_ldap_server_url() {
+  local current_ldap_url
+  current_ldap_url=$(redis-cli -p $NODE_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING CONFIG GET ldap.servers | tail -1)
+  if [[ -n "$current_ldap_url" ]]; then
+    echo "Updating LDAP_AUTH_SERVER_URL from running config: $current_ldap_url"
+    LDAP_AUTH_SERVER_URL="$current_ldap_url"
+  fi
+}
+
 post_start_configuration() {
+  if [[ "$LDAP_ENABLED" == "true" ]]; then
+    sync_ldap_server_url
+  fi
   create_user
   set_memory_limit
   set_rdb_persistence_config
