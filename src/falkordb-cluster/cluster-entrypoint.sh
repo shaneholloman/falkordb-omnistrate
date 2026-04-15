@@ -763,11 +763,27 @@ prepare_node_files_for_startup() {
 }
 
 sync_ldap_server_url() {
-  local current_ldap_url
-  current_ldap_url=$(redis-cli -p $NODE_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING CONFIG GET ldap.servers | tail -1)
-  if [[ -n "$current_ldap_url" ]]; then
-    echo "Updating LDAP_AUTH_SERVER_URL from running config: $current_ldap_url"
-    LDAP_AUTH_SERVER_URL="$current_ldap_url"
+  local config_output current_ldap_url
+  local old_default="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389"
+
+  if ! config_output=$(redis-cli --raw -p $NODE_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING CONFIG GET ldap.servers 2>&1); then
+    echo "Could not read ldap.servers from running config"
+    return
+  fi
+
+  current_ldap_url=$(printf '%s\n' "$config_output" | sed -n '2p')
+
+  if [[ -z "$current_ldap_url" || "$current_ldap_url" == ERR* ]]; then
+    echo "ldap.servers not set or error reading config"
+    return
+  fi
+
+  if [[ "$current_ldap_url" == "$old_default" ]]; then
+    echo "Migrating ldap.servers from $old_default to $LDAP_AUTH_SERVER_URL"
+    redis-cli --raw -p $NODE_PORT $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING CONFIG SET ldap.servers "$LDAP_AUTH_SERVER_URL"
+    config_rewrite
+  else
+    echo "ldap.servers is already up to date: $current_ldap_url"
   fi
 }
 

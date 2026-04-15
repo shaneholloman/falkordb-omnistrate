@@ -455,4 +455,53 @@ EOF
       The variable LDAP_ENABLED should eq "false"
     End
   End
+
+  Describe "sync_ldap_server_url()"
+    It "migrates ldap.servers when it matches the old default port 3389"
+      redis-cli() { printf 'ldap.servers\nldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3389\n'; }
+      config_rewrite() { :; }
+      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390"
+      AUTH_CONNECTION_STRING="-a testpass --no-auth-warning"
+      TLS_CONNECTION_STRING=""
+
+      When call sync_ldap_server_url
+      The status should be success
+      The output should include "Migrating ldap.servers"
+    End
+
+    It "does not migrate when ldap.servers already has the new URL"
+      redis-cli() { printf 'ldap.servers\nldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390\n'; }
+      config_rewrite() { :; }
+      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390"
+      AUTH_CONNECTION_STRING="-a testpass --no-auth-warning"
+      TLS_CONNECTION_STRING=""
+
+      When call sync_ldap_server_url
+      The status should be success
+      The output should include "already up to date"
+    End
+
+    It "handles redis-cli connection failure gracefully"
+      redis-cli() { echo "ERR Connection refused" >&2; return 1; }
+      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390"
+      AUTH_CONNECTION_STRING="-a testpass --no-auth-warning"
+      TLS_CONNECTION_STRING=""
+
+      When call sync_ldap_server_url
+      The status should be success
+      The output should include "Could not read ldap.servers"
+    End
+
+    It "handles ERR response in config output gracefully"
+      redis-cli() { printf 'ERR unknown command CONFIG\n'; }
+      config_rewrite() { :; }
+      LDAP_AUTH_SERVER_URL="ldaps://ldap-auth-service.ldap-auth.svc.cluster.local:3390"
+      AUTH_CONNECTION_STRING="-a testpass --no-auth-warning"
+      TLS_CONNECTION_STRING=""
+
+      When call sync_ldap_server_url
+      The status should be success
+      The output should include "not set or error"
+    End
+  End
 End
