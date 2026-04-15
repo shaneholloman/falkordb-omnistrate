@@ -440,6 +440,18 @@ fix_namespace_in_config_files() {
   fi
 }
 
+wait_for_node_ready() {
+  local port=${1:-$NODE_PORT}
+  echo "Waiting for FalkorDB to be ready on port $port"
+  while true; do
+    if [[ $(redis-cli -p $port $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING PING 2>/dev/null) == "PONG" ]]; then
+      echo "FalkorDB is ready"
+      break
+    fi
+    sleep 1
+  done
+}
+
 wait_for_bgrewrite_to_finish() {
   tout=${tout:-30}
   # Give BGREWRITEAOF time to start
@@ -842,7 +854,7 @@ main() {
   ensure_log_file_exists
   prepare_node_files_for_startup
   run_node
-  sleep 10
+  wait_for_node_ready
   post_start_configuration
   ensure_cluster_membership
   meet_unknown_nodes

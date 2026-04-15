@@ -756,6 +756,18 @@ sync_ldap_server_url() {
   fi
 }
 
+wait_for_node_ready() {
+  local port=${1:-$NODE_PORT}
+  echo "Waiting for FalkorDB to be ready on port $port"
+  while true; do
+    if [[ $(redis-cli -p $port $AUTH_CONNECTION_STRING $TLS_CONNECTION_STRING PING 2>/dev/null) == "PONG" ]]; then
+      echo "FalkorDB is ready"
+      break
+    fi
+    sleep 1
+  done
+}
+
 post_start_configuration() {
   if [[ "$LDAP_ENABLED" == "true" ]]; then
     sync_ldap_server_url
@@ -816,7 +828,7 @@ main() {
 
   if [ "$RUN_NODE" -eq "1" ]; then
     run_node
-    sleep 10
+    wait_for_node_ready
     create_user
     add_master_to_sentinel
     post_start_configuration
