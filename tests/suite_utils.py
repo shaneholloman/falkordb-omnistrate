@@ -44,6 +44,33 @@ def is_stale_master_error(exception):
     )
 
 
+def is_transient_connection_error(exception):
+    """
+    Check if an exception is a transient connection error that may occur
+    during cluster node restarts (e.g. during upgrades).
+
+    This typically occurs when:
+    1. A node is being restarted and its DNS entry temporarily doesn't resolve
+    2. A node is down and refuses connections
+    3. The cluster is temporarily in a CLUSTERDOWN state
+
+    Args:
+        exception: The exception to check
+
+    Returns:
+        bool: True if this is a transient connection error that should trigger a retry
+    """
+    error_str = str(exception).lower()
+    return (
+        "name or service not known" in error_str
+        or "connection refused" in error_str
+        or "connection reset" in error_str
+        or "clusterdown" in error_str
+        or "connection error" in error_str
+        or "timed out" in error_str
+    )
+
+
 def add_data(
     instance: OmnistrateFleetInstance, ssl=False, key="test", n=1, network_type="PUBLIC", retry_on_ldap_fail_seconds=10
 ):
@@ -157,21 +184,21 @@ def zero_downtime_worker(
                 except (ReadOnlyError, Exception) as e:
                     retries_left -= 1
                     
-                    if is_stale_master_error(e) and retries_left > 0:
-                        # Retry on stale master error if we have retries left
+                    if (is_stale_master_error(e) or is_transient_connection_error(e)) and retries_left > 0:
+                        # Retry on stale master or transient connection errors
                         logging.warning(
-                            f"Connection to stale master detected in zero-downtime worker "
+                            f"Transient error in zero-downtime worker "
                             f"({3 - retries_left}/3 attempts): {e}"
                         )
                         # Force connection reset and retry
                         instance._connection = None
-                        time.sleep(35)  # Wait for sentinel to update (30s down-after + 5s buffer)
+                        time.sleep(35)  # Wait for node to come back
                         db = instance.create_connection(
                             ssl=ssl, force_reconnect=True, network_type=network_type
                         )
                         g = db.select_graph(key)
                     else:
-                        # Either not a stale master error, or no retries left
+                        # Either not a transient error, or no retries left
                         raise
             
             time.sleep(2)

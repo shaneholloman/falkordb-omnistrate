@@ -286,7 +286,7 @@ def test_zero_downtime(
     from redis.sentinel import MasterNotFoundError
     import sys
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from tests.suite_utils import is_stale_master_error
+    from tests.suite_utils import is_stale_master_error, is_transient_connection_error
     
     try:
         db = instance.create_connection(ssl=ssl, force_reconnect=True)
@@ -304,19 +304,19 @@ def test_zero_downtime(
                 except (ReadOnlyError, MasterNotFoundError, Exception) as e:
                     retries_left -= 1
                     
-                    if is_stale_master_error(e) and retries_left > 0:
-                        # Retry on stale master error if we have retries left
+                    if (is_stale_master_error(e) or is_transient_connection_error(e)) and retries_left > 0:
+                        # Retry on stale master or transient connection errors
                         logging.warning(
-                            f"Connection to stale master detected in test_zero_downtime "
+                            f"Transient error in test_zero_downtime "
                             f"({3 - retries_left}/3 attempts): {e}"
                         )
                         # Force connection reset and retry
                         instance._connection = None
-                        time.sleep(35)  # Wait for sentinel to update (30s down-after + 5s buffer)
+                        time.sleep(35)  # Wait for node to come back
                         db = instance.create_connection(ssl=ssl, force_reconnect=True)
                         graph = db.select_graph("test")
                     else:
-                        # Either not a stale master error, or no retries left
+                        # Either not a transient error, or no retries left
                         raise
             
             time.sleep(3)
