@@ -124,6 +124,7 @@ class OmnistrateFleetInstance:
         network_type: str,
         product_tier_version: str | None = None,
         custom_network_id: str | None = None,
+        custom_tags: list[dict] | None = None,
         **kwargs,
     ) -> str:
         """Create an instance with the specified parameters. Optionally wait for the instance to be ready."""
@@ -147,6 +148,9 @@ class OmnistrateFleetInstance:
 
         if custom_network_id:
             data["custom_network_id"] = custom_network_id
+
+        if custom_tags:
+            data["customTags"] = custom_tags
 
         logging.info(f"Creating instance {name}")
 

@@ -137,6 +137,7 @@ def test_deploy_instance():
             falkordb_user="falkordb",
             falkordb_password=secrets.token_hex(16),
             product_tier_version=latest_version,
+            custom_tags=[{"key": "falkordb-internal", "value": "testing-pipeline"}],
             nodeInstanceType=args.instance_type,
             storageSize=args.storage_size,
             enableTLS=args.tls,

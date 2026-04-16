@@ -190,6 +190,7 @@ def test_upgrade_version():
             hostCount=args.host_count,
             clusterReplicas=args.cluster_replicas,
             product_tier_version=old_version,
+            custom_tags=[{"key": "falkordb-internal", "value": "testing-pipeline"}],
             custom_network_id=network.network_id if network else None,
         )
 
