@@ -33,8 +33,19 @@ jobs:
           - name: "Free/Standalone - AWS/us-east-2"
             ref_name: "FalkorDB Free"
             resource_key: "free"
-            instance_name_prefix: "deploy-free"
+            instance_name_prefix: "deploy-free-aws"
             instance_type: "t2.medium"
+            cloud_provider: "aws"
+            cloud_region: "us-east-2"
+            tls: "false"
+            custom_network: ""
+          - name: "Free/Standalone - GCP/us-central1"
+            ref_name: "FalkorDB Free"
+            resource_key: "free"
+            instance_name_prefix: "deploy-free-gcp"
+            instance_type: "e2-medium"
+            cloud_provider: "gcp"
+            cloud_region: "us-central1"
             tls: "false"
             custom_network: ""
           - name: "Startup/Standalone - AWS/us-east-2"
@@ -42,6 +53,8 @@ jobs:
             resource_key: "standalone"
             instance_name_prefix: "deploy-startup"
             instance_type: "t2.medium"
+            cloud_provider: "aws"
+            cloud_region: "us-east-2"
             tls: "true"
             custom_network: ""
           - name: "Pro/Standalone - AWS/us-east-2"
@@ -49,6 +62,8 @@ jobs:
             resource_key: "standalone"
             instance_name_prefix: "deploy-pro"
             instance_type: "m6i.large"
+            cloud_provider: "aws"
+            cloud_region: "us-east-2"
             tls: "true"
             custom_network: ""
           - name: "Enterprise/Standalone - AWS/us-east-2"
@@ -56,6 +71,8 @@ jobs:
             resource_key: "standalone"
             instance_name_prefix: "deploy-enterprise"
             instance_type: "m6i.large"
+            cloud_provider: "aws"
+            cloud_region: "us-east-2"
             tls: "true"
             custom_network: "aws-network-main"
 
@@ -99,7 +116,7 @@ jobs:
           poetry run python -u tests/test_deploy_instance.py \
             "${{ secrets.OMNISTRATE_USERNAME }}" \
             "${{ secrets.OMNISTRATE_PASSWORD }}" \
-            aws us-east-2 \
+            ${{ matrix.cloud_provider }} ${{ matrix.cloud_region }} \
             --service-id     "$SERVICE_ID" \
             --environment-id "$ENVIRONMENT_ID" \
             --ref-name       "${{ matrix.ref_name }}" \
