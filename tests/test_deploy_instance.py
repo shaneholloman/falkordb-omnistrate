@@ -1,6 +1,6 @@
 import sys
 import signal
-from random import randbytes
+import secrets
 import socket
 import logging
 import time
@@ -131,7 +131,7 @@ def test_deploy_instance():
             name=args.instance_name,
             description=args.instance_description,
             falkordb_user="falkordb",
-            falkordb_password=randbytes(16).hex(),
+            falkordb_password=secrets.token_hex(16),
             nodeInstanceType=args.instance_type,
             storageSize=args.storage_size,
             enableTLS=args.tls,
@@ -143,9 +143,9 @@ def test_deploy_instance():
         )
 
         try:
-            ip = resolve_hostname(instance=instance)
+            ip = resolve_hostname(instance=instance, network_type=args.network_type)
             logging.info(
-                f"Instance endpoint {instance.get_cluster_endpoint()['endpoint']} resolved to {ip}"
+                f"Instance endpoint {instance.get_cluster_endpoint(network_type=args.network_type)['endpoint']} resolved to {ip}"
             )
         except TimeoutError as e:
             logging.error(f"DNS resolution failed: {e}")
@@ -162,20 +162,28 @@ def test_deploy_instance():
         logging.exception(e)
         if not args.persist_instance_on_fail:
             instance.delete(False)
-        raise e
+        raise
 
     # Delete the instance
     instance.delete(False)
 
 
 def add_data(instance: OmnistrateFleetInstance):
-    db = instance.create_connection(ssl=args.tls, force_reconnect=True)
+    db = instance.create_connection(
+        ssl=args.tls,
+        force_reconnect=True,
+        network_type=args.network_type,
+    )
     graph = db.select_graph("test")
     graph.query("CREATE (n:Person {name: 'Alice'})")
 
 
 def query_data(instance: OmnistrateFleetInstance):
-    db = instance.create_connection(ssl=args.tls, force_reconnect=True)
+    db = instance.create_connection(
+        ssl=args.tls,
+        force_reconnect=True,
+        network_type=args.network_type,
+    )
     graph = db.select_graph("test")
     result = graph.ro_query("MATCH (n:Person) RETURN n.name")
 
@@ -183,11 +191,11 @@ def query_data(instance: OmnistrateFleetInstance):
         raise ValueError("No data found in the graph after creation")
 
 
-def resolve_hostname(instance: OmnistrateFleetInstance, timeout=300, interval=1):
+def resolve_hostname(instance: OmnistrateFleetInstance, timeout=300, interval=1, network_type="PUBLIC"):
     if interval <= 0 or timeout <= 0:
         raise ValueError("Interval and timeout must be positive")
 
-    cluster_endpoint = instance.get_cluster_endpoint()
+    cluster_endpoint = instance.get_cluster_endpoint(network_type=network_type)
 
     if not cluster_endpoint or "endpoint" not in cluster_endpoint:
         raise KeyError("Missing endpoint information in cluster configuration")
