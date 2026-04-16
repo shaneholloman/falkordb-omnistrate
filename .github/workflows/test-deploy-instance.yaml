@@ -1,0 +1,117 @@
+name: Test Deploy Instance
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+on:
+  workflow_run:
+    workflows: ["Build and release image"]
+    types:
+      - completed
+    branches: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      service_id:
+        description: "Omnistrate service ID (overrides OMNISTRATE_INTERNAL_SERVICE_ID var)"
+        required: false
+        type: string
+      environment_id:
+        description: "Omnistrate environment ID (overrides OMNISTRATE_INTERNAL_PROD_ENVIRONMENT var)"
+        required: false
+        type: string
+
+jobs:
+  test-deploy:
+    name: ${{ matrix.name }}
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - name: "Free/Standalone - AWS/us-east-2"
+            ref_name: "FalkorDB Free"
+            resource_key: "free"
+            instance_name_prefix: "deploy-free"
+            instance_type: "t2.medium"
+            tls: "false"
+            custom_network: ""
+          - name: "Startup/Standalone - AWS/us-east-2"
+            ref_name: "FalkorDB Startup"
+            resource_key: "standalone"
+            instance_name_prefix: "deploy-startup"
+            instance_type: "t2.medium"
+            tls: "true"
+            custom_network: ""
+          - name: "Pro/Standalone - AWS/us-east-2"
+            ref_name: "FalkorDB Pro"
+            resource_key: "standalone"
+            instance_name_prefix: "deploy-pro"
+            instance_type: "t2.medium"
+            tls: "true"
+            custom_network: ""
+          - name: "Enterprise/Standalone - AWS/us-east-2"
+            ref_name: "FalkorDB Enterprise"
+            resource_key: "standalone"
+            instance_name_prefix: "deploy-enterprise"
+            instance_type: "t2.medium"
+            tls: "true"
+            custom_network: "aws-network-main"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.x"
+
+      - name: Cache Poetry virtualenv
+        id: cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/pypoetry/virtualenvs
+          key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install Poetry and dependencies
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry install
+
+      - name: Run deploy test
+        env:
+          SUBSCRIPTION_ID: sub-GJPV3NoNC0
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+
+          SERVICE_ID="${{ inputs.service_id || vars.OMNISTRATE_INTERNAL_SERVICE_ID }}"
+          ENVIRONMENT_ID="${{ inputs.environment_id || vars.OMNISTRATE_INTERNAL_PROD_ENVIRONMENT }}"
+
+          EXTRA_ARGS=()
+          [[ -n "${{ matrix.custom_network }}" ]] && EXTRA_ARGS+=(--custom-network "${{ matrix.custom_network }}")
+          [[ "${{ matrix.tls }}" == "true" ]]      && EXTRA_ARGS+=(--tls)
+
+          poetry run python -u tests/test_deploy_instance.py \
+            "${{ secrets.OMNISTRATE_USERNAME }}" \
+            "${{ secrets.OMNISTRATE_PASSWORD }}" \
+            aws us-east-2 \
+            --service-id     "$SERVICE_ID" \
+            --environment-id "$ENVIRONMENT_ID" \
+            --ref-name       "${{ matrix.ref_name }}" \
+            --resource-key   "${{ matrix.resource_key }}" \
+            --instance-name  "${{ matrix.instance_name_prefix }}-${{ github.run_id }}" \
+            --instance-type  "${{ matrix.instance_type }}" \
+            "${EXTRA_ARGS[@]}"
