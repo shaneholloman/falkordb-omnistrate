@@ -433,12 +433,16 @@ class OmnistrateFleetInstance:
         target_version: str,
         wait_until_ready: bool = False,
         upgrade_timeout: int = 2400,
+        notify_customer: bool = False,
+        max_concurrent_upgrades: int = 1,
     ):
 
         data = {
             "sourceVersion": source_version,
             "targetVersion": target_version,
             "upgradeFilters": {"INSTANCE_IDS": [self.instance_id]},
+            "notifyCustomer": notify_customer,
+            "maxConcurrentUpgrades": max_concurrent_upgrades,
         }
 
         response = self._fleet_api.client().post(
