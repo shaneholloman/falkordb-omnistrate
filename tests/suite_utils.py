@@ -1,7 +1,7 @@
 import time
 import threading
 import logging
-from redis.exceptions import OutOfMemoryError, ReadOnlyError, ResponseError, ClusterError, RedisClusterException, ClusterDownError
+from redis.exceptions import OutOfMemoryError, ReadOnlyError
 from .classes.omnistrate_fleet_instance import OmnistrateFleetInstance
 
 import concurrent.futures
@@ -41,34 +41,6 @@ def is_stale_master_error(exception):
         or "previous master" in error_str
         or "masternotfounderror" in exception_name.lower()
         or "no master found" in error_str
-    )
-
-
-def is_transient_connection_error(exception):
-    """
-    Check if an exception is a transient connection error that may occur
-    during cluster node restarts (e.g. during upgrades).
-
-    This typically occurs when:
-    1. A node is being restarted and its DNS entry temporarily doesn't resolve
-    2. A node is down and refuses connections
-    3. The cluster is temporarily in a CLUSTERDOWN state
-
-    Args:
-        exception: The exception to check
-
-    Returns:
-        bool: True if this is a transient connection error that should trigger a retry
-    """
-    error_str = str(exception).lower()
-    return (
-        isinstance(exception, (ResponseError, ClusterError, RedisClusterException, ClusterDownError))
-        or "name or service not known" in error_str
-        or "connection refused" in error_str
-        or "connection reset" in error_str
-        or "clusterdown" in error_str
-        or "connection error" in error_str
-        or "timed out" in error_str
     )
 
 
@@ -185,7 +157,7 @@ def zero_downtime_worker(
                 except (ReadOnlyError, Exception) as e:
                     retries_left -= 1
                     
-                    if (is_stale_master_error(e) or is_transient_connection_error(e)) and retries_left > 0:
+                    if is_stale_master_error(e) and retries_left > 0:
                         # Retry on stale master or transient connection errors
                         logging.warning(
                             f"Transient error in zero-downtime worker "
