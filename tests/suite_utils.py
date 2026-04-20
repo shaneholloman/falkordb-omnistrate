@@ -1,7 +1,7 @@
 import time
 import threading
 import logging
-from redis.exceptions import OutOfMemoryError, ReadOnlyError
+from redis.exceptions import OutOfMemoryError, ReadOnlyError, ResponseError, ClusterError, RedisClusterException, ClusterDownError
 from .classes.omnistrate_fleet_instance import OmnistrateFleetInstance
 
 import concurrent.futures
@@ -62,7 +62,8 @@ def is_transient_connection_error(exception):
     """
     error_str = str(exception).lower()
     return (
-        "name or service not known" in error_str
+        isinstance(exception, (ResponseError, ClusterError, RedisClusterException, ClusterDownError))
+        or "name or service not known" in error_str
         or "connection refused" in error_str
         or "connection reset" in error_str
         or "clusterdown" in error_str
